@@ -32,6 +32,18 @@ make lint
 
 Generate a reproducible synthetic OHLCV CSV with `uv run python scripts/generate_synthetic_data.py`. CSV data uses `timestamp,symbol,open,high,low,close,volume`; run it through `trading.data.validation.validate_ohlcv` before research. Validation reports problems and normalizes timestamps/order, but does not drop rows or repair prices.
 
+Generate causal, per-symbol features with:
+
+```python
+from trading.data.synthetic import generate_synthetic_ohlcv
+from trading.features.feature_pipeline import engineer_features
+
+bars = generate_synthetic_ohlcv()
+features = engineer_features(bars)
+```
+
+Rolling features use current and prior observations only. Warm-up periods remain missing; they are not backfilled.
+
 ## Safety and scope
 
 The broker mode is fixed to paper and live trading is disabled. This foundation does not submit orders. Backtests and paper-trading results are research outputs, not guarantees of future performance.
