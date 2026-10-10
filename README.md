@@ -44,6 +44,21 @@ features = engineer_features(bars)
 
 Rolling features use current and prior observations only. Warm-up periods remain missing; they are not backfilled.
 
+## Baseline strategy
+
+Generate structured moving-average crossover signals from engineered features:
+
+```python
+from trading.data.synthetic import generate_synthetic_ohlcv
+from trading.features.feature_pipeline import engineer_features
+from trading.strategies.moving_average import MovingAverageCrossoverStrategy
+
+features = engineer_features(generate_synthetic_ohlcv())
+signals = MovingAverageCrossoverStrategy().generate_signals(features)
+```
+
+The default strategy uses SMA 20 and SMA 50. It emits BUY or SELL only on a crossover and HOLD otherwise. Signals are observations at bar close, not orders; any execution must be evaluated no earlier than the next bar and pass separate risk controls.
+
 ## Safety and scope
 
 The broker mode is fixed to paper and live trading is disabled. This foundation does not submit orders. Backtests and paper-trading results are research outputs, not guarantees of future performance.
