@@ -75,6 +75,30 @@ custom_engine = BacktestEngine(BacktestConfig(costs=TransactionCosts(commission_
 
 Default costs are placeholders (10 bps commission, 5 bps slippage, 2 bps spread); set `BacktestConfig(costs=TransactionCosts(...))` to match a documented market/broker assumption. The initial engine is single-symbol and long-only. Open final positions are marked to market, not forcibly liquidated.
 
+## Risk controls
+
+New exposure is disabled by default with `ENABLE_TRADING=false`. Before a buy, the risk manager requires a stop price and caps size by stop-distance risk, available cash, per-position notional, total exposure, daily loss, drawdown, open positions, and the symbol cooldown. A sell can only reduce an existing long position, even while the kill switch is off:
+
+```python
+from datetime import UTC, datetime
+
+from app.config import get_settings
+from trading.risk.manager import AccountRiskState, RiskManager, TradeProposal
+
+risk = RiskManager(enabled=get_settings().enable_trading)
+proposal = TradeProposal(
+    symbol="DEMO",
+    side="BUY",
+    entry_price=100,
+    stop_loss_price=95,
+    timestamp=datetime.now(UTC),
+)
+account_state = AccountRiskState(equity=100_000, available_cash=100_000)
+decision = risk.evaluate(proposal, account_state)
+```
+
+The risk manager returns an approval and calculated quantity; it does not place orders. Keep the kill switch off until an execution path and account-state source are explicitly configured.
+
 ## Safety and scope
 
 The broker mode is fixed to paper and live trading is disabled. This foundation does not submit orders. Backtests and paper-trading results are research outputs, not guarantees of future performance.

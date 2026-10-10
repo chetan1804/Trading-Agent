@@ -9,6 +9,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-trading}:${POSTGRES_PASSWORD:-trading}@postgres:5432/${POSTGRES_DB:-trading}
       REDIS_URL: redis://redis:6379/0
       BROKER_MODE: paper
+      ENABLE_TRADING: ${ENABLE_TRADING:-false}
       ENABLE_LIVE_TRADING: "false"
     depends_on:
       postgres:

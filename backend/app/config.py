@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://trading:trading@localhost:5432/trading"
     redis_url: str = "redis://localhost:6379/0"
     broker_mode: Literal["paper"] = "paper"
+    enable_trading: bool = False
     enable_live_trading: bool = False
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
