@@ -59,6 +59,22 @@ signals = MovingAverageCrossoverStrategy().generate_signals(features)
 
 The default strategy uses SMA 20 and SMA 50. It emits BUY or SELL only on a crossover and HOLD otherwise. Signals are observations at bar close, not orders; any execution must be evaluated no earlier than the next bar and pass separate risk controls.
 
+Backtest with next-bar-open fills and the illustrative default cost model:
+
+```python
+from trading.backtesting.engine import BacktestEngine
+from trading.backtesting.metrics import calculate_performance_metrics
+from trading.backtesting.costs import TransactionCosts
+from trading.backtesting.engine import BacktestConfig
+
+result = BacktestEngine().run(features, MovingAverageCrossoverStrategy())
+metrics = calculate_performance_metrics(result.equity_curve, result.trades)
+# Replace the illustrative default rates with your documented assumption.
+custom_engine = BacktestEngine(BacktestConfig(costs=TransactionCosts(commission_rate=0.0005)))
+```
+
+Default costs are placeholders (10 bps commission, 5 bps slippage, 2 bps spread); set `BacktestConfig(costs=TransactionCosts(...))` to match a documented market/broker assumption. The initial engine is single-symbol and long-only. Open final positions are marked to market, not forcibly liquidated.
+
 ## Safety and scope
 
 The broker mode is fixed to paper and live trading is disabled. This foundation does not submit orders. Backtests and paper-trading results are research outputs, not guarantees of future performance.
