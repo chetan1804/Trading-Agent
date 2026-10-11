@@ -21,6 +21,8 @@ class PaperBroker:
         self.positions: dict[str, float] = {}
         self.orders: dict[str, Order] = {}
         self.last_prices: dict[str, float] = {}
+        self.position_cost_basis: dict[str, float] = {}
+        self.realized_pnl = 0.0
         self.risk_manager = risk_manager
         self.fee_rate = float(fee_rate)
         self.slippage_bps = float(slippage_bps)
@@ -154,15 +156,26 @@ class PaperBroker:
         fee = float(fees) if fees is not None else adjusted_price * fill_quantity * self.fee_rate
         if order.side == "BUY":
             self.cash -= (adjusted_price * fill_quantity) + fee
-            self.positions[order.symbol] = self.positions.get(order.symbol, 0.0) + fill_quantity
+            current_quantity = self.positions.get(order.symbol, 0.0)
+            new_quantity = current_quantity + fill_quantity
+            total_basis = self.position_cost_basis.get(order.symbol, 0.0)
+            self.position_cost_basis[order.symbol] = total_basis + (adjusted_price * fill_quantity)
+            self.positions[order.symbol] = new_quantity
         else:
             self.cash += (adjusted_price * fill_quantity) - fee
             current = self.positions.get(order.symbol, 0.0)
+            current_basis = self.position_cost_basis.get(order.symbol, 0.0)
+            avg_cost = 0.0 if current <= 0 else current_basis / current
+            realized = (adjusted_price - avg_cost) * fill_quantity
+            self.realized_pnl += realized
+            self.daily_pnl += realized
             next_position = current - fill_quantity
             if next_position == 0:
                 self.positions.pop(order.symbol, None)
+                self.position_cost_basis.pop(order.symbol, None)
             else:
                 self.positions[order.symbol] = next_position
+                self.position_cost_basis[order.symbol] = avg_cost * next_position
 
         self.last_prices[order.symbol] = adjusted_price
         self.peak_equity = max(self.peak_equity, self.equity)
