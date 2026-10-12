@@ -6,6 +6,7 @@ from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.api.routes.health import router as health_router
+from app.api.routes.portfolio import router as portfolio_router
 from app.config import Settings, get_settings
 from app.core.logging import configure_logging
 
@@ -32,6 +33,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     application.include_router(health_router)
+    application.include_router(portfolio_router)
     return application
 
 
