@@ -9,6 +9,7 @@ from app.api.routes.agents import router as agents_router
 from app.api.routes.ai import router as ai_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.health import router as health_router
+from app.api.routes.monitoring import router as monitoring_router
 from app.api.routes.portfolio import router as portfolio_router
 from app.config import Settings, get_settings
 from app.core.logging import configure_logging
@@ -40,6 +41,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(dashboard_router)
     application.include_router(ai_router)
     application.include_router(agents_router)
+    application.include_router(monitoring_router)
     return application
 
 
