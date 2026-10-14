@@ -8,6 +8,8 @@ __pycache__/
 htmlcov/
 dist/
 build/
+node_modules/
+frontend/node_modules/
 *.egg-info/
 data/raw/*
 data/processed/*
