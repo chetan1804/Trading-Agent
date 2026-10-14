@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
+from trading.ai.rag import RAGResearchAssistant
 from trading.ai.research import MarketResearchAssistant
 
 router = APIRouter(prefix="/api", tags=["ai"])
@@ -12,6 +13,11 @@ class AIResearchRequest(BaseModel):
     documents: list[str] = Field(default_factory=list)
 
 
+class RAGRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    documents: list[str] = Field(default_factory=list)
+
+
 @router.post("/ai/research")
 async def ai_research(request: AIResearchRequest) -> dict[str, object]:
     assistant = MarketResearchAssistant.default()
@@ -21,3 +27,9 @@ async def ai_research(request: AIResearchRequest) -> dict[str, object]:
         news=request.news,
         documents=request.documents,
     )
+
+
+@router.post("/ai/rag")
+async def ai_rag(request: RAGRequest) -> dict[str, object]:
+    assistant = RAGResearchAssistant()
+    return assistant.answer(query=request.query, documents=request.documents)
