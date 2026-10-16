@@ -49,3 +49,16 @@ def test_feature_engineering_api_endpoints_work() -> None:
     assert payload["count"] == 20
     assert "sma_20" in payload["feature_columns"]
     assert payload["rows"][0]["close"] > 0
+
+
+def test_strategy_api_endpoints_work() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+
+    response = client.get("/api/strategies/generate?symbol=DEMO&limit=40")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "DEMO"
+    assert payload["count"] == 40
+    assert payload["signals"][0]["action"] in {"BUY", "SELL", "HOLD"}
+    assert payload["strategy_id"].startswith("moving_average_crossover")

@@ -15,6 +15,7 @@ from app.api.routes.market_data import router as market_data_router
 from app.api.routes.ml import router as ml_router
 from app.api.routes.monitoring import router as monitoring_router
 from app.api.routes.portfolio import router as portfolio_router
+from app.api.routes.strategies import router as strategies_router
 from app.config import Settings, get_settings
 from app.core.logging import configure_logging
 
@@ -43,6 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(health_router)
     application.include_router(market_data_router)
     application.include_router(features_router)
+    application.include_router(strategies_router)
     application.include_router(portfolio_router)
     application.include_router(dashboard_router)
     application.include_router(ai_router)
