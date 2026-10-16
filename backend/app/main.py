@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.api.routes.agents import router as agents_router
 from app.api.routes.ai import router as ai_router
+from app.api.routes.backtests import router as backtests_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.deployment import router as deployment_router
 from app.api.routes.features import router as features_router
@@ -45,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(market_data_router)
     application.include_router(features_router)
     application.include_router(strategies_router)
+    application.include_router(backtests_router)
     application.include_router(portfolio_router)
     application.include_router(dashboard_router)
     application.include_router(ai_router)

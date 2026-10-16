@@ -62,3 +62,17 @@ def test_strategy_api_endpoints_work() -> None:
     assert payload["count"] == 40
     assert payload["signals"][0]["action"] in {"BUY", "SELL", "HOLD"}
     assert payload["strategy_id"].startswith("moving_average_crossover")
+
+
+def test_backtesting_api_endpoints_work() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+
+    response = client.get("/api/backtests/run?symbol=DEMO&limit=30")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "DEMO"
+    assert payload["initial_cash"] > 0
+    assert payload["ending_equity"] > 0
+    assert "metrics" in payload
+    assert "total_return" in payload["metrics"]
