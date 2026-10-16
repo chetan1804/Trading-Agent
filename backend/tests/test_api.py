@@ -36,3 +36,16 @@ def test_market_data_api_endpoints_work() -> None:
     assert payload["symbol"] == "DEMO"
     assert len(payload["data"]) == 5
     assert payload["data"][0]["close"] > 0
+
+
+def test_feature_engineering_api_endpoints_work() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+
+    response = client.get("/api/features/engineer?symbol=DEMO&limit=20")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "DEMO"
+    assert payload["count"] == 20
+    assert "sma_20" in payload["feature_columns"]
+    assert payload["rows"][0]["close"] > 0

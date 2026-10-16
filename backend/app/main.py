@@ -9,6 +9,7 @@ from app.api.routes.agents import router as agents_router
 from app.api.routes.ai import router as ai_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.deployment import router as deployment_router
+from app.api.routes.features import router as features_router
 from app.api.routes.health import router as health_router
 from app.api.routes.market_data import router as market_data_router
 from app.api.routes.ml import router as ml_router
@@ -41,6 +42,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.include_router(health_router)
     application.include_router(market_data_router)
+    application.include_router(features_router)
     application.include_router(portfolio_router)
     application.include_router(dashboard_router)
     application.include_router(ai_router)
