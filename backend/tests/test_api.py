@@ -76,3 +76,26 @@ def test_backtesting_api_endpoints_work() -> None:
     assert payload["ending_equity"] > 0
     assert "metrics" in payload
     assert "total_return" in payload["metrics"]
+
+
+def test_risk_api_evaluation_endpoints_work() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/risk/evaluate",
+        json={
+            "enabled": True,
+            "symbol": "DEMO",
+            "side": "BUY",
+            "entry_price": 100,
+            "stop_loss_price": 95,
+            "timestamp": "2024-01-02T00:00:00Z",
+            "account": {"equity": 100000, "available_cash": 100000},
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["approved"] is True
+    assert payload["quantity"] > 0
+    assert payload["capital_required"] > 0
