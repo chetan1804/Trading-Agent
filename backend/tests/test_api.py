@@ -99,3 +99,16 @@ def test_risk_api_evaluation_endpoints_work() -> None:
     assert payload["approved"] is True
     assert payload["quantity"] > 0
     assert payload["capital_required"] > 0
+
+
+def test_portfolio_api_snapshot_endpoint_works() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+
+    response = client.get("/api/portfolio/snapshot")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["cash"] >= 0
+    assert payload["positions"] == {}
+    assert payload["total_value"] >= 0
+    assert "exposure" in payload
