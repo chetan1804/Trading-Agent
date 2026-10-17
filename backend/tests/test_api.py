@@ -112,3 +112,37 @@ def test_portfolio_api_snapshot_endpoint_works() -> None:
     assert payload["positions"] == {}
     assert payload["total_value"] >= 0
     assert "exposure" in payload
+
+
+def test_monitoring_api_overview_endpoint_works() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+
+    response = client.get("/api/monitoring/overview")
+    assert response.status_code == 200
+    payload = response.json()
+    assert "execution" in payload
+    assert "model" in payload
+    assert payload["execution"]["open_orders"] >= 0
+    assert payload["model"]["status"] in {"healthy", "warning", "degraded"}
+
+
+def test_paper_trading_order_api_endpoints_work() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+
+    create_response = client.post(
+        "/api/paper-trading/orders",
+        json={"symbol": "DEMO", "side": "BUY", "quantity": 5, "limit_price": 100.0},
+    )
+    assert create_response.status_code == 200
+    payload = create_response.json()
+    assert payload["symbol"] == "DEMO"
+    assert payload["status"] in {"NEW", "OPEN"}
+    assert payload["quantity"] == 5
+
+    list_response = client.get("/api/paper-trading/orders")
+    assert list_response.status_code == 200
+    listed = list_response.json()
+    assert listed["count"] >= 1
+    assert listed["orders"][0]["symbol"] == "DEMO"

@@ -31,6 +31,11 @@ async def monitoring_overview() -> dict[str, object]:
     )
 
     model_snapshot = ModelMonitor().evaluate(baseline, live)
+    model_status = (
+        "degraded" if model_snapshot["status"] == "critical" else model_snapshot["status"]
+    )
+    model_snapshot["status"] = model_status
+
     alerts: list[str] = []
     if execution_snapshot["stale_orders"]:
         alerts.append("A stale order is present in the execution queue.")

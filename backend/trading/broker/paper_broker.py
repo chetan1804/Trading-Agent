@@ -56,6 +56,7 @@ class PaperBroker:
         stop_price: float | None = None,
         reduce_only: bool = False,
     ) -> Order:
+        _ = reduce_only
         order = Order(
             symbol=symbol,
             side=side,
