@@ -191,3 +191,16 @@ def test_agent_run_api_includes_sentiment_context() -> None:
     assert payload["status"] == "ok"
     assert payload["sentiment"]["sentiment"] in {"bullish", "neutral", "bearish"}
     assert payload["signal"]["trend"] in {"bullish", "neutral", "bearish"}
+
+
+def test_broker_status_api_endpoint_works() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+
+    response = client.get("/api/broker/status")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["mode"] in {"paper", "live"}
+    assert payload["paper_enabled"] is True
+    assert payload["live_enabled"] is False
