@@ -146,3 +146,25 @@ def test_paper_trading_order_api_endpoints_work() -> None:
     listed = list_response.json()
     assert listed["count"] >= 1
     assert listed["orders"][0]["symbol"] == "DEMO"
+
+
+def test_ai_sentiment_api_endpoint_works() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/ai/sentiment",
+        json={
+            "symbol": "DEMO",
+            "headlines": [
+                "Earnings beat expectations and management raised guidance.",
+                "Analysts remain optimistic as demand expands globally.",
+            ],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "DEMO"
+    assert payload["sentiment"] in {"bullish", "neutral", "bearish"}
+    assert payload["score"] >= -1.0
+    assert payload["score"] <= 1.0
