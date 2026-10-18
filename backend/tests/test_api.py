@@ -204,3 +204,16 @@ def test_broker_status_api_endpoint_works() -> None:
     assert payload["mode"] in {"paper", "live"}
     assert payload["paper_enabled"] is True
     assert payload["live_enabled"] is False
+
+
+def test_market_data_news_endpoint_works() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+
+    response = client.get("/api/market-data/news?symbol=DEMO&limit=3")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "DEMO"
+    assert payload["count"] == 3
+    assert payload["items"][0]["headline"]
+    assert payload["items"][0]["sentiment"] in {"bullish", "neutral", "bearish"}
