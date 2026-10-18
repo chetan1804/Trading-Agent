@@ -168,3 +168,26 @@ def test_ai_sentiment_api_endpoint_works() -> None:
     assert payload["sentiment"] in {"bullish", "neutral", "bearish"}
     assert payload["score"] >= -1.0
     assert payload["score"] <= 1.0
+
+
+def test_agent_run_api_includes_sentiment_context() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/agents/run",
+        json={
+            "symbol": "DEMO",
+            "objective": "Assess near-term direction.",
+            "market_snapshot": {"price": 101.25, "change_pct": 1.5, "volume": 250000},
+            "news": [
+                "Revenue expanded strongly and management raised full-year guidance.",
+            ],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "DEMO"
+    assert payload["status"] == "ok"
+    assert payload["sentiment"]["sentiment"] in {"bullish", "neutral", "bearish"}
+    assert payload["signal"]["trend"] in {"bullish", "neutral", "bearish"}

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from trading.ai.sentiment import SentimentAnalyzer
+
 
 class MarketAgent:
     def __init__(self, name: str = "market-research-agent") -> None:
@@ -45,6 +47,8 @@ class MarketAgent:
         if headline_count == 0:
             actions.append("request additional market context")
 
+        sentiment = SentimentAnalyzer().analyze(news or [])
+
         return {
             "symbol": symbol.upper(),
             "agent": self.name,
@@ -52,6 +56,12 @@ class MarketAgent:
             "objective": objective,
             "plan": plan,
             "actions": actions,
+            "sentiment": {
+                "score": sentiment["score"],
+                "sentiment": sentiment["sentiment"],
+                "headline_count": sentiment["headline_count"],
+                "signals": sentiment["signals"],
+            },
             "signal": {
                 "trend": trend,
                 "price": price,
