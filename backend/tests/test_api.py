@@ -254,6 +254,29 @@ def test_market_data_ingest_endpoint_works() -> None:
     assert payload["stored"] == 2
 
 
+def test_market_data_store_retrieval_endpoint_works() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+
+    client.post(
+        "/api/market-data/ingest",
+        json={
+            "symbol": "DEMO",
+            "bars": [
+                {"timestamp": "2024-01-03T00:00:00Z", "open": 101.0, "high": 103.0, "low": 100.0, "close": 102.0, "volume": 1400},
+                {"timestamp": "2024-01-04T00:00:00Z", "open": 102.0, "high": 104.0, "low": 101.0, "close": 103.0, "volume": 1500},
+            ],
+        },
+    )
+
+    response = client.get("/api/market-data/stored?symbol=DEMO")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "DEMO"
+    assert payload["count"] == 2
+    assert payload["data"][0]["close"] > 0
+
+
 def test_performance_summary_api_endpoint_works() -> None:
     app = create_app(Settings(enable_trading=False))
     client = TestClient(app)

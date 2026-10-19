@@ -136,3 +136,19 @@ async def market_data_ingest(request: Request, payload: MarketDataIngestRequest)
         "stored": len(accepted),
         "total_records": len(store[symbol]),
     }
+
+
+@router.get("/market-data/stored")
+async def market_data_stored(
+    request: Request,
+    symbol: str = "DEMO",
+    limit: int = Query(default=50, ge=1, le=500),
+) -> dict[str, object]:
+    store = getattr(request.app.state, "market_data_store", {})
+    symbol_upper = symbol.upper()
+    records = list(store.get(symbol_upper, []))[-limit:]
+    return {
+        "symbol": symbol_upper,
+        "count": len(records),
+        "data": records,
+    }
