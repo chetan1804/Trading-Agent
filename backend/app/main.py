@@ -49,6 +49,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     application.state.paper_broker = PaperBroker(initial_cash=100_000.0)
+    application.state.market_data_store: dict[str, list[dict[str, object]]] = {}
     application.include_router(health_router)
     application.include_router(market_data_router)
     application.include_router(features_router)

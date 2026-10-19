@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Request
+from pydantic import BaseModel, Field
 from trading.data.synthetic import generate_synthetic_ohlcv
 
 
@@ -100,4 +101,38 @@ async def market_data_validate(
         "null_count": null_count,
         "issues": issues,
         "valid": not issues,
+    }
+
+
+class MarketDataIngestRequest(BaseModel):
+    symbol: str = Field(..., min_length=1)
+    bars: list[dict[str, object]] = Field(default_factory=list)
+
+
+@router.post("/market-data/ingest")
+async def market_data_ingest(request: Request, payload: MarketDataIngestRequest) -> dict[str, object]:
+    store = getattr(request.app.state, "market_data_store", None)
+    if store is None:
+        store = {}
+        request.app.state.market_data_store = store
+
+    symbol = payload.symbol.upper()
+    accepted = []
+    for bar in payload.bars:
+        normalized = {
+            "timestamp": str(bar.get("timestamp", "")),
+            "open": float(bar.get("open", 0.0)),
+            "high": float(bar.get("high", 0.0)),
+            "low": float(bar.get("low", 0.0)),
+            "close": float(bar.get("close", 0.0)),
+            "volume": int(bar.get("volume", 0)),
+        }
+        accepted.append(normalized)
+
+    store.setdefault(symbol, []).extend(accepted)
+    return {
+        "status": "ok",
+        "symbol": symbol,
+        "stored": len(accepted),
+        "total_records": len(store[symbol]),
     }

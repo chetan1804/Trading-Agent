@@ -233,6 +233,27 @@ def test_market_data_validation_endpoint_works() -> None:
     assert payload["issues"] == []
 
 
+def test_market_data_ingest_endpoint_works() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/market-data/ingest",
+        json={
+            "symbol": "DEMO",
+            "bars": [
+                {"timestamp": "2024-01-01T00:00:00Z", "open": 99.0, "high": 101.0, "low": 98.5, "close": 100.5, "volume": 1200},
+                {"timestamp": "2024-01-02T00:00:00Z", "open": 100.5, "high": 102.0, "low": 99.0, "close": 101.25, "volume": 1300},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["symbol"] == "DEMO"
+    assert payload["stored"] == 2
+
+
 def test_performance_summary_api_endpoint_works() -> None:
     app = create_app(Settings(enable_trading=False))
     client = TestClient(app)
