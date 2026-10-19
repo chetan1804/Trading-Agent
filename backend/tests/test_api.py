@@ -219,6 +219,20 @@ def test_market_data_news_endpoint_works() -> None:
     assert payload["items"][0]["sentiment"] in {"bullish", "neutral", "bearish"}
 
 
+def test_market_data_validation_endpoint_works() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+
+    response = client.get("/api/market-data/validate?symbol=DEMO&limit=20")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["symbol"] == "DEMO"
+    assert payload["valid"] is True
+    assert payload["rows"] == 20
+    assert payload["null_count"] == 0
+    assert payload["issues"] == []
+
+
 def test_performance_summary_api_endpoint_works() -> None:
     app = create_app(Settings(enable_trading=False))
     client = TestClient(app)

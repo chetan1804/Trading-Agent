@@ -74,3 +74,30 @@ async def market_data_news(
         "count": len(items),
         "items": items,
     }
+
+
+@router.get("/market-data/validate")
+async def market_data_validate(
+    symbol: str = "DEMO",
+    limit: int = Query(default=20, ge=1, le=500),
+) -> dict[str, object]:
+    frame = generate_synthetic_ohlcv(symbol=symbol, periods=max(limit, 1), seed=7)
+    null_count = int(frame.isna().sum().sum())
+    issues: list[str] = []
+
+    if frame.empty:
+        issues.append("No rows returned for the requested symbol")
+    if null_count > 0:
+        issues.append(f"Null values detected: {null_count}")
+    if (frame["close"] <= 0).any():
+        issues.append("Non-positive close prices detected")
+    if (frame["volume"] <= 0).any():
+        issues.append("Non-positive volume detected")
+
+    return {
+        "symbol": symbol.upper(),
+        "rows": int(len(frame)),
+        "null_count": null_count,
+        "issues": issues,
+        "valid": not issues,
+    }
