@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pandas as pd
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field, model_validator
 from trading.data.synthetic import generate_synthetic_ohlcv
@@ -114,10 +115,16 @@ async def market_data_news(
 
 @router.get("/market-data/validate")
 async def market_data_validate(
+    request: Request,
     symbol: str = "DEMO",
     limit: int = Query(default=20, ge=1, le=500),
 ) -> dict[str, object]:
-    frame = generate_synthetic_ohlcv(symbol=symbol, periods=max(limit, 1), seed=7)
+    store = getattr(request.app.state, "market_data_store", {})
+    stored_bars = store.get(symbol.upper(), [])
+    if stored_bars:
+        frame = pd.DataFrame(stored_bars[-limit:])
+    else:
+        frame = generate_synthetic_ohlcv(symbol=symbol, periods=max(limit, 1), seed=7)
     null_count = int(frame.isna().sum().sum())
     issues: list[str] = []
 

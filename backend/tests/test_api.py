@@ -301,6 +301,12 @@ def test_market_data_ingest_endpoint_works() -> None:
     assert payload["symbol"] == "DEMO"
     assert payload["stored"] == 2
 
+    validation = client.get("/api/market-data/validate?symbol=DEMO&limit=20")
+    assert validation.status_code == 200
+    validation_payload = validation.json()
+    assert validation_payload["rows"] == 2
+    assert validation_payload["valid"] is True
+
 
 def test_market_data_ingest_rejects_invalid_ohlcv_bar() -> None:
     app = create_app(Settings(enable_trading=False))
