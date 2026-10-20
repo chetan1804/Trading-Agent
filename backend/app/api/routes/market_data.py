@@ -69,15 +69,19 @@ async def market_data_quote(symbol: str = "DEMO") -> dict[str, object]:
 
 @router.get("/market-data/history")
 async def market_data_history(
+    request: Request,
     symbol: str = "DEMO",
     limit: int = Query(default=20, ge=1, le=500),
 ) -> dict[str, object]:
-    samples = generate_synthetic_ohlcv(symbol=symbol, periods=max(limit, 1), seed=7)
-    history = samples.tail(limit).reset_index(drop=True)
-    return {
-        "symbol": symbol.upper(),
-        "count": int(len(history)),
-        "data": [
+    symbol_upper = symbol.upper()
+    store = getattr(request.app.state, "market_data_store", {})
+    stored_bars = store.get(symbol_upper, [])
+    if stored_bars:
+        records = list(stored_bars)[-limit:]
+    else:
+        samples = generate_synthetic_ohlcv(symbol=symbol, periods=max(limit, 1), seed=7)
+        history = samples.tail(limit).reset_index(drop=True)
+        records = [
             {
                 "timestamp": row["timestamp"].isoformat(),
                 "open": float(row["open"]),
@@ -87,7 +91,11 @@ async def market_data_history(
                 "volume": int(row["volume"]),
             }
             for row in history.to_dict(orient="records")
-        ],
+        ]
+    return {
+        "symbol": symbol_upper,
+        "count": len(records),
+        "data": records,
     }
 
 

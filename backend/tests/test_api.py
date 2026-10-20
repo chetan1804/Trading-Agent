@@ -50,6 +50,40 @@ def test_feature_engineering_api_endpoints_work() -> None:
     assert "sma_20" in payload["feature_columns"]
     assert payload["rows"][0]["close"] > 0
 
+def test_market_data_history_prefers_ingested_bars() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+    ingested_bars = [
+        {
+            "timestamp": "2024-02-01T00:00:00Z",
+            "open": 49.0,
+            "high": 51.0,
+            "low": 48.5,
+            "close": 50.5,
+            "volume": 900,
+        },
+        {
+            "timestamp": "2024-02-02T00:00:00Z",
+            "open": 50.5,
+            "high": 52.0,
+            "low": 50.0,
+            "close": 51.25,
+            "volume": 1100,
+        },
+    ]
+    client.post(
+        "/api/market-data/ingest",
+        json={"symbol": "DEMO", "bars": ingested_bars},
+    )
+
+    response = client.get("/api/market-data/history?symbol=DEMO&limit=2")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 2
+    assert [bar["close"] for bar in payload["data"]] == [50.5, 51.25]
+
+
 
 def test_strategy_api_endpoints_work() -> None:
     app = create_app(Settings(enable_trading=False))
