@@ -1,16 +1,43 @@
+from __future__ import annotations
+
+from datetime import datetime
+
 from fastapi import APIRouter, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from trading.data.synthetic import generate_synthetic_ohlcv
 
 
 def _headline_batch(symbol: str, limit: int) -> list[dict[str, object]]:
+    ticker = symbol.upper()
     templates = [
-        ("bullish", f"{symbol.upper()} expands production and guides revenue higher after strong demand.") ,
-        ("neutral", f"{symbol.upper()} management says operating conditions remain steady as markets assess policy shifts.") ,
-        ("bearish", f"{symbol.upper()} warns of margin pressure as input costs rise and demand softens in key regions.") ,
-        ("bullish", f"Analysts remain optimistic on {symbol.upper()} after the latest earnings beat and raised outlook."),
-        ("neutral", f"{symbol.upper()} continues to monitor demand trends while investors wait for the next catalyst."),
-        ("bearish", f"{symbol.upper()} faces fresh headwinds as supply chain volatility weighs on guidance."),
+        (
+            "bullish",
+            f"{ticker} expands production and guides revenue higher after strong demand.",
+        ),
+        (
+            "neutral",
+            f"{ticker} management says operating conditions remain steady as markets "
+            "assess policy shifts.",
+        ),
+        (
+            "bearish",
+            f"{ticker} warns of margin pressure as input costs rise and demand "
+            "softens in key regions.",
+        ),
+        (
+            "bullish",
+            f"Analysts remain optimistic on {ticker} after the latest earnings "
+            "beat and raised outlook.",
+        ),
+        (
+            "neutral",
+            f"{ticker} continues to monitor demand trends while investors wait "
+            "for the next catalyst.",
+        ),
+        (
+            "bearish",
+            f"{ticker} faces fresh headwinds as supply chain volatility weighs on guidance.",
+        ),
     ]
     items = []
     for idx, (sentiment, headline) in enumerate(templates[: max(limit, 1)]):
@@ -104,30 +131,40 @@ async def market_data_validate(
     }
 
 
+class OHLCVBar(BaseModel):
+    timestamp: datetime
+    open: float = Field(..., gt=0)
+    high: float = Field(..., gt=0)
+    low: float = Field(..., gt=0)
+    close: float = Field(..., gt=0)
+    volume: int = Field(..., ge=0)
+
+    @model_validator(mode="after")
+    def validate_price_range(self) -> OHLCVBar:
+        if self.high < max(self.open, self.close):
+            raise ValueError("high must be greater than or equal to open and close")
+        if self.low > min(self.open, self.close):
+            raise ValueError("low must be less than or equal to open and close")
+        return self
+
+
 class MarketDataIngestRequest(BaseModel):
     symbol: str = Field(..., min_length=1)
-    bars: list[dict[str, object]] = Field(default_factory=list)
+    bars: list[OHLCVBar] = Field(default_factory=list)
 
 
 @router.post("/market-data/ingest")
-async def market_data_ingest(request: Request, payload: MarketDataIngestRequest) -> dict[str, object]:
+async def market_data_ingest(
+    request: Request,
+    payload: MarketDataIngestRequest,
+) -> dict[str, object]:
     store = getattr(request.app.state, "market_data_store", None)
     if store is None:
         store = {}
         request.app.state.market_data_store = store
 
     symbol = payload.symbol.upper()
-    accepted = []
-    for bar in payload.bars:
-        normalized = {
-            "timestamp": str(bar.get("timestamp", "")),
-            "open": float(bar.get("open", 0.0)),
-            "high": float(bar.get("high", 0.0)),
-            "low": float(bar.get("low", 0.0)),
-            "close": float(bar.get("close", 0.0)),
-            "volume": int(bar.get("volume", 0)),
-        }
-        accepted.append(normalized)
+    accepted = [bar.model_dump(mode="json") for bar in payload.bars]
 
     store.setdefault(symbol, []).extend(accepted)
     return {

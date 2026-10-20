@@ -242,8 +242,22 @@ def test_market_data_ingest_endpoint_works() -> None:
         json={
             "symbol": "DEMO",
             "bars": [
-                {"timestamp": "2024-01-01T00:00:00Z", "open": 99.0, "high": 101.0, "low": 98.5, "close": 100.5, "volume": 1200},
-                {"timestamp": "2024-01-02T00:00:00Z", "open": 100.5, "high": 102.0, "low": 99.0, "close": 101.25, "volume": 1300},
+                {
+                    "timestamp": "2024-01-01T00:00:00Z",
+                    "open": 99.0,
+                    "high": 101.0,
+                    "low": 98.5,
+                    "close": 100.5,
+                    "volume": 1200,
+                },
+                {
+                    "timestamp": "2024-01-02T00:00:00Z",
+                    "open": 100.5,
+                    "high": 102.0,
+                    "low": 99.0,
+                    "close": 101.25,
+                    "volume": 1300,
+                },
             ],
         },
     )
@@ -252,6 +266,30 @@ def test_market_data_ingest_endpoint_works() -> None:
     assert payload["status"] == "ok"
     assert payload["symbol"] == "DEMO"
     assert payload["stored"] == 2
+
+
+def test_market_data_ingest_rejects_invalid_ohlcv_bar() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/market-data/ingest",
+        json={
+            "symbol": "DEMO",
+            "bars": [
+                {
+                    "timestamp": "2024-01-01T00:00:00Z",
+                    "open": 99.0,
+                    "high": 98.0,
+                    "low": 97.0,
+                    "close": 99.5,
+                    "volume": 1200,
+                }
+            ],
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_market_data_store_retrieval_endpoint_works() -> None:
@@ -263,8 +301,22 @@ def test_market_data_store_retrieval_endpoint_works() -> None:
         json={
             "symbol": "DEMO",
             "bars": [
-                {"timestamp": "2024-01-03T00:00:00Z", "open": 101.0, "high": 103.0, "low": 100.0, "close": 102.0, "volume": 1400},
-                {"timestamp": "2024-01-04T00:00:00Z", "open": 102.0, "high": 104.0, "low": 101.0, "close": 103.0, "volume": 1500},
+                {
+                    "timestamp": "2024-01-03T00:00:00Z",
+                    "open": 101.0,
+                    "high": 103.0,
+                    "low": 100.0,
+                    "close": 102.0,
+                    "volume": 1400,
+                },
+                {
+                    "timestamp": "2024-01-04T00:00:00Z",
+                    "open": 102.0,
+                    "high": 104.0,
+                    "low": 101.0,
+                    "close": 103.0,
+                    "volume": 1500,
+                },
             ],
         },
     )
