@@ -332,6 +332,31 @@ def test_market_data_ingest_rejects_invalid_ohlcv_bar() -> None:
     assert response.status_code == 422
 
 
+def test_market_data_validation_reports_duplicate_timestamps() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+    duplicate_bar = {
+        "timestamp": "2024-01-05T00:00:00Z",
+        "open": 102.0,
+        "high": 104.0,
+        "low": 101.0,
+        "close": 103.0,
+        "volume": 1500,
+    }
+    ingest_response = client.post(
+        "/api/market-data/ingest",
+        json={"symbol": "DEMO", "bars": [duplicate_bar, duplicate_bar]},
+    )
+    assert ingest_response.status_code == 200
+
+    response = client.get("/api/market-data/validate?symbol=DEMO")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["valid"] is False
+    assert any("duplicate timestamps" in issue.lower() for issue in payload["issues"])
+
+
 def test_market_data_store_retrieval_endpoint_works() -> None:
     app = create_app(Settings(enable_trading=False))
     client = TestClient(app)

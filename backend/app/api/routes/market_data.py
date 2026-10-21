@@ -132,6 +132,9 @@ async def market_data_validate(
         issues.append("No rows returned for the requested symbol")
     if null_count > 0:
         issues.append(f"Null values detected: {null_count}")
+    duplicate_count = int(pd.to_datetime(frame["timestamp"], utc=True).duplicated().sum())
+    if duplicate_count > 0:
+        issues.append(f"Duplicate timestamps detected: {duplicate_count}")
     if (frame["close"] <= 0).any():
         issues.append("Non-positive close prices detected")
     if (frame["volume"] <= 0).any():
