@@ -394,6 +394,40 @@ def test_market_data_store_retrieval_endpoint_works() -> None:
     assert payload["data"][0]["close"] > 0
 
 
+def test_market_data_history_sorts_out_of_order_ingestion() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+    bars = [
+        {
+            "timestamp": "2024-01-07T00:00:00Z",
+            "open": 102.0,
+            "high": 104.0,
+            "low": 101.0,
+            "close": 103.0,
+            "volume": 1500,
+        },
+        {
+            "timestamp": "2024-01-06T00:00:00Z",
+            "open": 101.0,
+            "high": 103.0,
+            "low": 100.0,
+            "close": 102.0,
+            "volume": 1400,
+        },
+    ]
+    ingest_response = client.post(
+        "/api/market-data/ingest",
+        json={"symbol": "DEMO", "bars": bars},
+    )
+    assert ingest_response.status_code == 200
+
+    response = client.get("/api/market-data/history?symbol=DEMO&limit=2")
+
+    assert response.status_code == 200
+    timestamps = [bar["timestamp"] for bar in response.json()["data"]]
+    assert timestamps == ["2024-01-06T00:00:00Z", "2024-01-07T00:00:00Z"]
+
+
 def test_performance_summary_api_endpoint_works() -> None:
     app = create_app(Settings(enable_trading=False))
     client = TestClient(app)
