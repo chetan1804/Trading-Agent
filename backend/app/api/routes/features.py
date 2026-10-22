@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Query
+import pandas as pd
+from fastapi import APIRouter, Query, Request
 from trading.data.synthetic import generate_synthetic_ohlcv
 from trading.features.feature_pipeline import engineer_features
 
@@ -7,10 +8,17 @@ router = APIRouter(prefix="/api", tags=["features"])
 
 @router.get("/features/engineer")
 async def engineer_feature_snapshot(
+    request: Request,
     symbol: str = "DEMO",
     limit: int = Query(default=20, ge=1, le=200),
 ) -> dict[str, object]:
-    samples = generate_synthetic_ohlcv(symbol=symbol, periods=max(limit, 50), seed=7)
+    store = getattr(request.app.state, "market_data_store", {})
+    stored_bars = store.get(symbol.upper(), [])
+    if stored_bars:
+        samples = pd.DataFrame(stored_bars)
+        samples["symbol"] = symbol.upper()
+    else:
+        samples = generate_synthetic_ohlcv(symbol=symbol, periods=max(limit, 50), seed=7)
     engineered = engineer_features(samples)
     latest = engineered.tail(limit).reset_index(drop=True)
     excluded = {
