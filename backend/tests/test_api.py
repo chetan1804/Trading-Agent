@@ -119,6 +119,44 @@ def test_feature_engineering_uses_ingested_market_data() -> None:
     assert [row["close"] for row in payload["rows"]] == [50.5, 51.25]
 
 
+def test_strategy_generation_uses_ingested_market_data() -> None:
+    app = create_app(Settings(enable_trading=False))
+    client = TestClient(app)
+    bars = [
+        {
+            "timestamp": "2024-03-01T00:00:00Z",
+            "open": 49.0,
+            "high": 51.0,
+            "low": 48.5,
+            "close": 50.5,
+            "volume": 900,
+        },
+        {
+            "timestamp": "2024-03-02T00:00:00Z",
+            "open": 50.5,
+            "high": 52.0,
+            "low": 50.0,
+            "close": 51.25,
+            "volume": 1100,
+        },
+    ]
+    ingest_response = client.post(
+        "/api/market-data/ingest",
+        json={"symbol": "DEMO", "bars": bars},
+    )
+    assert ingest_response.status_code == 200
+
+    response = client.get("/api/strategies/generate?symbol=DEMO&limit=2")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 2
+    assert [signal["timestamp"] for signal in payload["signals"]] == [
+        "2024-03-01T00:00:00+00:00",
+        "2024-03-02T00:00:00+00:00",
+    ]
+
+
 
 def test_strategy_api_endpoints_work() -> None:
     app = create_app(Settings(enable_trading=False))
