@@ -332,10 +332,10 @@ def test_market_data_ingest_rejects_invalid_ohlcv_bar() -> None:
     assert response.status_code == 422
 
 
-def test_market_data_validation_reports_duplicate_timestamps() -> None:
+def test_market_data_ingest_upserts_duplicate_timestamps() -> None:
     app = create_app(Settings(enable_trading=False))
     client = TestClient(app)
-    duplicate_bar = {
+    original_bar = {
         "timestamp": "2024-01-05T00:00:00Z",
         "open": 102.0,
         "high": 104.0,
@@ -343,18 +343,35 @@ def test_market_data_validation_reports_duplicate_timestamps() -> None:
         "close": 103.0,
         "volume": 1500,
     }
-    ingest_response = client.post(
+    replacement_bar = {
+        "timestamp": "2024-01-04T19:00:00-05:00",
+        "open": 103.0,
+        "high": 105.0,
+        "low": 102.0,
+        "close": 104.0,
+        "volume": 1600,
+    }
+    first_ingest = client.post(
         "/api/market-data/ingest",
-        json={"symbol": "DEMO", "bars": [duplicate_bar, duplicate_bar]},
+        json={"symbol": "DEMO", "bars": [original_bar]},
     )
-    assert ingest_response.status_code == 200
+    second_ingest = client.post(
+        "/api/market-data/ingest",
+        json={"symbol": "DEMO", "bars": [replacement_bar]},
+    )
+    assert first_ingest.status_code == 200
+    assert second_ingest.status_code == 200
+    assert second_ingest.json()["total_records"] == 1
 
-    response = client.get("/api/market-data/validate?symbol=DEMO")
+    stored_response = client.get("/api/market-data/stored?symbol=DEMO")
+    assert stored_response.status_code == 200
+    stored_payload = stored_response.json()
+    assert stored_payload["count"] == 1
+    assert stored_payload["data"][0]["close"] == 104.0
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["valid"] is False
-    assert any("duplicate timestamps" in issue.lower() for issue in payload["issues"])
+    validation_response = client.get("/api/market-data/validate?symbol=DEMO")
+    assert validation_response.status_code == 200
+    assert validation_response.json()["valid"] is True
 
 
 def test_market_data_store_retrieval_endpoint_works() -> None:

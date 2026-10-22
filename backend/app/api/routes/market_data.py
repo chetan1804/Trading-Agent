@@ -184,8 +184,16 @@ async def market_data_ingest(
     symbol = payload.symbol.upper()
     accepted = [bar.model_dump(mode="json") for bar in payload.bars]
 
-    store.setdefault(symbol, []).extend(accepted)
-    store[symbol].sort(
+    bars_by_timestamp = {
+        pd.to_datetime(bar["timestamp"], utc=True): bar
+        for bar in store.get(symbol, [])
+    }
+    for bar in accepted:
+        timestamp = pd.to_datetime(bar["timestamp"], utc=True)
+        bars_by_timestamp[timestamp] = bar
+
+    store[symbol] = sorted(
+        bars_by_timestamp.values(),
         key=lambda bar: pd.to_datetime(bar["timestamp"], utc=True),
     )
     return {
