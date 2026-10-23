@@ -24,6 +24,7 @@ from app.api.routes.strategies import router as strategies_router
 from app.config import Settings, get_settings
 from app.core.logging import configure_logging
 from trading.broker.paper_broker import PaperBroker
+from trading.risk.manager import RiskManager
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -36,7 +37,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.redis_client = Redis.from_url(
             app_settings.redis_url, decode_responses=True
         )
-        application.state.paper_broker = PaperBroker(initial_cash=100_000.0)
+        application.state.risk_manager = RiskManager(enabled=app_settings.enable_trading)
+        application.state.paper_broker = PaperBroker(
+            initial_cash=100_000.0,
+            risk_manager=application.state.risk_manager,
+        )
         try:
             yield
         finally:
@@ -48,7 +53,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
-    application.state.paper_broker = PaperBroker(initial_cash=100_000.0)
+    application.state.risk_manager = RiskManager(enabled=app_settings.enable_trading)
+    application.state.paper_broker = PaperBroker(
+        initial_cash=100_000.0,
+        risk_manager=application.state.risk_manager,
+    )
     application.state.market_data_store: dict[str, list[dict[str, object]]] = {}
     application.include_router(health_router)
     application.include_router(market_data_router)

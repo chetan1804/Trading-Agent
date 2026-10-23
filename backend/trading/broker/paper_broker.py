@@ -92,6 +92,15 @@ class PaperBroker:
         if order.status in blocked_states:
             raise ValueError(f"cannot submit an order in status {order.status}")
 
+        duplicate_active_order = any(
+            existing.id != order.id
+            and existing.symbol == order.symbol
+            and existing.is_active
+            for existing in self.orders.values()
+        )
+        if duplicate_active_order:
+            return order.reject("an active order already exists for this symbol")
+
         if risk_decision is not None and not risk_decision.approved:
             return order.reject(risk_decision.reason)
 
@@ -115,6 +124,10 @@ class PaperBroker:
             decision = self.risk_manager.evaluate(proposal, account)
             if not decision.approved:
                 return order.reject(decision.reason)
+            if order.quantity > decision.quantity:
+                return order.reject(
+                    "order quantity exceeds the quantity approved by risk management"
+                )
 
         order.submit()
         return order

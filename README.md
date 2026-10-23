@@ -97,8 +97,8 @@ account_state = AccountRiskState(equity=100_000, available_cash=100_000)
 decision = risk.evaluate(proposal, account_state)
 ```
 
-The risk manager returns an approval and calculated quantity; it does not place orders. Keep the kill switch off until an execution path and account-state source are explicitly configured.
+The paper-order API uses the configured risk manager before accepting a new order. New buys require `ENABLE_TRADING=true`, an ingested market price or positive limit price, and a stop price; the requested quantity cannot exceed the risk-approved quantity. Sells are limited to reducing an existing paper position. The default kill switch is off, and orders remain in the in-memory paper broker until filled or cancelled.
 
 ## Safety and scope
 
-The broker mode is fixed to paper and live trading is disabled. This foundation does not submit orders. Backtests and paper-trading results are research outputs, not guarantees of future performance.
+The broker mode is fixed to paper and live trading is disabled. The paper-order endpoint can submit unfilled paper orders after risk checks; it does not connect to an external broker. Backtests and paper-trading results are research outputs, not guarantees of future performance.

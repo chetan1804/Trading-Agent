@@ -11,10 +11,10 @@ router = APIRouter(prefix="/api", tags=["paper-trading"])
 class PaperTradeRequest(BaseModel):
     symbol: str = Field(..., min_length=1)
     side: str = Field(..., pattern="^(BUY|SELL)$")
-    quantity: float = Field(..., gt=0)
+    quantity: float = Field(..., gt=0, allow_inf_nan=False)
     order_type: str = Field(default="MARKET", pattern="^(MARKET|LIMIT|STOP)$")
-    limit_price: float | None = Field(default=None, gt=0)
-    stop_price: float | None = Field(default=None, gt=0)
+    limit_price: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    stop_price: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     reduce_only: bool = False
 
 
@@ -30,6 +30,7 @@ def _serialize_order(order: object) -> dict[str, object]:
         "avg_fill_price": order.avg_fill_price,
         "limit_price": order.limit_price,
         "stop_price": order.stop_price,
+        "rejection_reason": order.rejection_reason,
         "created_at": order.created_at.isoformat(),
     }
 
@@ -39,10 +40,23 @@ async def create_paper_trade(request: Request, payload: PaperTradeRequest) -> di
     broker = getattr(request.app.state, "paper_broker", None)
     if broker is None:
         raise HTTPException(status_code=500, detail="paper broker is not initialized")
+    if payload.reduce_only and payload.side != "SELL":
+        raise HTTPException(status_code=422, detail="reduce_only orders must use side SELL")
 
-    market_price = payload.limit_price or 100.0
+    symbol = payload.symbol.strip().upper()
+    store = getattr(request.app.state, "market_data_store", {})
+    stored_bars = store.get(symbol, [])
+    market_price = payload.limit_price
+    if market_price is None and stored_bars:
+        market_price = float(stored_bars[-1]["close"])
+    if market_price is None or market_price <= 0:
+        raise HTTPException(
+            status_code=422,
+            detail="a positive limit price or an ingested market price is required",
+        )
+
     order = broker.create_order(
-        symbol=payload.symbol.upper(),
+        symbol=symbol,
         side=payload.side,
         quantity=float(payload.quantity),
         order_type=payload.order_type,
