@@ -74,6 +74,10 @@ class PaperBroker:
     def list_orders(self) -> list[Order]:
         return list(self.orders.values())
 
+    def restore_orders(self, orders: list[Order]) -> None:
+        """Load durable order records into this broker instance."""
+        self.orders = {order.id: order for order in orders}
+
     def submit_order(
         self,
         order: Order,
@@ -93,9 +97,7 @@ class PaperBroker:
             raise ValueError(f"cannot submit an order in status {order.status}")
 
         duplicate_active_order = any(
-            existing.id != order.id
-            and existing.symbol == order.symbol
-            and existing.is_active
+            existing.id != order.id and existing.symbol == order.symbol and existing.is_active
             for existing in self.orders.values()
         )
         if duplicate_active_order:

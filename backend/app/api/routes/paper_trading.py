@@ -4,12 +4,23 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
+from trading.broker.order import Order
+
+from app.repositories.paper_orders import PaperOrderRepository
 
 router = APIRouter(prefix="/api", tags=["paper-trading"])
 
 
+async def _save_order(request: Request, order: Order) -> None:
+    session_factory = getattr(request.app.state, "database_session_factory", None)
+    if session_factory is None:
+        raise HTTPException(status_code=503, detail="paper order storage is unavailable")
+    async with session_factory() as session:
+        await PaperOrderRepository(session).save(order)
+
+
 class PaperTradeRequest(BaseModel):
-    symbol: str = Field(..., min_length=1)
+    symbol: str = Field(..., min_length=1, max_length=32)
     side: str = Field(..., pattern="^(BUY|SELL)$")
     quantity: float = Field(..., gt=0, allow_inf_nan=False)
     order_type: str = Field(default="MARKET", pattern="^(MARKET|LIMIT|STOP)$")
@@ -44,6 +55,8 @@ async def create_paper_trade(request: Request, payload: PaperTradeRequest) -> di
         raise HTTPException(status_code=422, detail="reduce_only orders must use side SELL")
 
     symbol = payload.symbol.strip().upper()
+    if not symbol:
+        raise HTTPException(status_code=422, detail="symbol cannot be blank")
     store = getattr(request.app.state, "market_data_store", {})
     stored_bars = store.get(symbol, [])
     market_price = payload.limit_price
@@ -69,7 +82,23 @@ async def create_paper_trade(request: Request, payload: PaperTradeRequest) -> di
         market_price=market_price,
         timestamp=datetime.now(UTC),
     )
+    await _save_order(request, order)
 
+    return _serialize_order(order)
+
+
+@router.post("/paper-trading/orders/{order_id}/cancel")
+async def cancel_paper_trade(request: Request, order_id: str) -> dict[str, object]:
+    broker = getattr(request.app.state, "paper_broker", None)
+    if broker is None:
+        raise HTTPException(status_code=500, detail="paper broker is not initialized")
+    try:
+        order = broker.cancel_order(order_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="paper order not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    await _save_order(request, order)
     return _serialize_order(order)
 
 
@@ -79,8 +108,5 @@ async def list_paper_trades(request: Request) -> dict[str, object]:
     if broker is None:
         raise HTTPException(status_code=500, detail="paper broker is not initialized")
 
-    orders = [
-        _serialize_order(order)
-        for order in broker.list_orders()
-    ]
+    orders = [_serialize_order(order) for order in broker.list_orders()]
     return {"count": len(orders), "orders": orders}
