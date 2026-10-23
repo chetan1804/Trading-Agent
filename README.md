@@ -17,7 +17,7 @@ make run
 
 The API listens at <http://localhost:8001>. Interactive API documentation is at <http://localhost:8001/docs>.
 
-For PostgreSQL and Redis, start the complete local stack with `docker compose up --build`. Compose uses local-only development credentials by default; override them with environment variables for non-local use.
+Start PostgreSQL and Redis before running the API. The complete stack, including automatic database migrations, starts with `docker compose up --build`. Compose uses local-only development credentials by default; override them with environment variables for non-local use. For a separately started API, apply schema changes with `make migrate` before `make run`.
 
 ## Checks
 

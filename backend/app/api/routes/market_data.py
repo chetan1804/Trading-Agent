@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pandas as pd
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field, model_validator
 from trading.data.synthetic import generate_synthetic_ohlcv
+
+from app.repositories.market_data import MarketDataRepository
 
 
 def _headline_batch(symbol: str, limit: int) -> list[dict[str, object]]:
@@ -42,29 +44,38 @@ def _headline_batch(symbol: str, limit: int) -> list[dict[str, object]]:
     ]
     items = []
     for idx, (sentiment, headline) in enumerate(templates[: max(limit, 1)]):
-        items.append({
-            "id": f"news-{symbol.lower()}-{idx}",
-            "headline": headline,
-            "sentiment": sentiment,
-            "source": "synthetic-market-feed",
-        })
+        items.append(
+            {
+                "id": f"news-{symbol.lower()}-{idx}",
+                "headline": headline,
+                "sentiment": sentiment,
+                "source": "synthetic-market-feed",
+            }
+        )
     return items
+
 
 router = APIRouter(prefix="/api", tags=["market-data"])
 
 
 @router.get("/market-data/quote")
-async def market_data_quote(symbol: str = "DEMO") -> dict[str, object]:
-    data = generate_synthetic_ohlcv(symbol=symbol, periods=50, seed=7)
-    latest = data.iloc[-1]
+async def market_data_quote(request: Request, symbol: str = "DEMO") -> dict[str, object]:
+    symbol_upper = symbol.upper()
+    store = getattr(request.app.state, "market_data_store", {})
+    stored_bars = store.get(symbol_upper, [])
+    if stored_bars:
+        latest = stored_bars[-1]
+        timestamp = pd.to_datetime(latest["timestamp"], utc=True)
+        values = {name: float(latest[name]) for name in ("open", "high", "low", "close")}
+    else:
+        latest = generate_synthetic_ohlcv(symbol=symbol_upper, periods=50, seed=7).iloc[-1]
+        timestamp = latest["timestamp"]
+        values = {name: float(latest[name]) for name in ("open", "high", "low", "close")}
     return {
-        "symbol": str(latest["symbol"]),
-        "timestamp": latest["timestamp"].isoformat(),
-        "last_price": float(latest["close"]),
-        "close": float(latest["close"]),
-        "open": float(latest["open"]),
-        "high": float(latest["high"]),
-        "low": float(latest["low"]),
+        "symbol": symbol_upper,
+        "timestamp": timestamp.isoformat(),
+        "last_price": values["close"],
+        **values,
     }
 
 
@@ -165,9 +176,17 @@ class OHLCVBar(BaseModel):
             raise ValueError("low must be less than or equal to open and close")
         return self
 
+    @model_validator(mode="after")
+    def normalize_timestamp(self) -> OHLCVBar:
+        if self.timestamp.tzinfo is None:
+            object.__setattr__(self, "timestamp", self.timestamp.replace(tzinfo=UTC))
+        else:
+            object.__setattr__(self, "timestamp", self.timestamp.astimezone(UTC))
+        return self
+
 
 class MarketDataIngestRequest(BaseModel):
-    symbol: str = Field(..., min_length=1)
+    symbol: str = Field(..., min_length=1, max_length=32)
     bars: list[OHLCVBar] = Field(default_factory=list)
 
 
@@ -181,16 +200,35 @@ async def market_data_ingest(
         store = {}
         request.app.state.market_data_store = store
 
-    symbol = payload.symbol.upper()
-    accepted = [bar.model_dump(mode="json") for bar in payload.bars]
+    symbol = payload.symbol.strip().upper()
+    if not symbol:
+        raise HTTPException(status_code=422, detail="symbol cannot be blank")
+    by_timestamp: dict[pd.Timestamp, dict[str, object]] = {}
+    for bar in payload.bars:
+        record = bar.model_dump()
+        record["symbol"] = symbol
+        by_timestamp[pd.Timestamp(bar.timestamp)] = record
+    accepted = sorted(by_timestamp.values(), key=lambda bar: bar["timestamp"])
+
+    session_factory = getattr(request.app.state, "database_session_factory", None)
+    if session_factory is None:
+        raise HTTPException(status_code=503, detail="market data storage is unavailable")
+    async with session_factory() as session:
+        await MarketDataRepository(session).upsert_many(accepted)
 
     bars_by_timestamp = {
-        pd.to_datetime(bar["timestamp"], utc=True): bar
-        for bar in store.get(symbol, [])
+        pd.to_datetime(bar["timestamp"], utc=True): bar for bar in store.get(symbol, [])
     }
     for bar in accepted:
         timestamp = pd.to_datetime(bar["timestamp"], utc=True)
-        bars_by_timestamp[timestamp] = bar
+        bars_by_timestamp[timestamp] = {
+            "timestamp": timestamp.isoformat(),
+            "open": float(bar["open"]),
+            "high": float(bar["high"]),
+            "low": float(bar["low"]),
+            "close": float(bar["close"]),
+            "volume": int(bar["volume"]),
+        }
 
     store[symbol] = sorted(
         bars_by_timestamp.values(),

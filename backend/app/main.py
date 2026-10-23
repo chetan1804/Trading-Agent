@@ -3,7 +3,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from redis.asyncio import Redis
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from trading.broker.paper_broker import PaperBroker
+from trading.risk.manager import RiskManager
 
 from app.api.routes.agents import router as agents_router
 from app.api.routes.ai import router as ai_router
@@ -16,15 +18,14 @@ from app.api.routes.health import router as health_router
 from app.api.routes.market_data import router as market_data_router
 from app.api.routes.ml import router as ml_router
 from app.api.routes.monitoring import router as monitoring_router
-from app.api.routes.performance import router as performance_router
 from app.api.routes.paper_trading import router as paper_trading_router
+from app.api.routes.performance import router as performance_router
 from app.api.routes.portfolio import router as portfolio_router
 from app.api.routes.risk import router as risk_router
 from app.api.routes.strategies import router as strategies_router
 from app.config import Settings, get_settings
 from app.core.logging import configure_logging
-from trading.broker.paper_broker import PaperBroker
-from trading.risk.manager import RiskManager
+from app.repositories.market_data import MarketDataRepository
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -33,7 +34,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-        application.state.database_engine = create_async_engine(app_settings.database_url)
+        engine = create_async_engine(app_settings.database_url)
+        application.state.database_engine = engine
+        application.state.database_session_factory = async_sessionmaker(
+            engine,
+            expire_on_commit=False,
+        )
         application.state.redis_client = Redis.from_url(
             app_settings.redis_url, decode_responses=True
         )
@@ -43,6 +49,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             risk_manager=application.state.risk_manager,
         )
         try:
+            if app_settings.app_env == "test":
+                persisted_bars = {}
+            else:
+                async with application.state.database_session_factory() as session:
+                    persisted_bars = await MarketDataRepository(session).list_all()
+            application.state.market_data_store = persisted_bars
             yield
         finally:
             await application.state.redis_client.aclose()

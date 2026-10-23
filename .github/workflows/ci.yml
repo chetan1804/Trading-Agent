@@ -10,6 +10,23 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: trading
+          POSTGRES_PASSWORD: trading
+          POSTGRES_DB: trading
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trading -d trading"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: test
+      DATABASE_URL: postgresql+asyncpg://trading:trading@localhost:5432/trading
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -24,6 +41,9 @@ jobs:
 
       - name: Install Python dependencies
         run: uv sync --extra dev
+
+      - name: Apply database migrations
+        run: uv run alembic upgrade head
 
       - name: Run backend tests
         run: uv run pytest -q
