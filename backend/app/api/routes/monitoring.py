@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
-from fastapi import APIRouter
-from trading.broker.paper_broker import PaperBroker
+from fastapi import APIRouter, HTTPException, Request
 from trading.model_monitoring.monitor import ModelMonitor
 from trading.monitoring.execution import ExecutionMonitor
 
@@ -10,8 +9,10 @@ router = APIRouter(prefix="/api", tags=["monitoring"])
 
 
 @router.get("/monitoring/overview")
-async def monitoring_overview() -> dict[str, object]:
-    broker = PaperBroker(initial_cash=100_000.0)
+async def monitoring_overview(request: Request) -> dict[str, object]:
+    broker = getattr(request.app.state, "paper_broker", None)
+    if broker is None:
+        raise HTTPException(status_code=503, detail="paper broker is not initialized")
     execution = ExecutionMonitor(broker)
     execution_snapshot = execution.snapshot()
 
