@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -78,6 +79,39 @@ class PaperBroker:
         """Load durable order records into this broker instance."""
         self.orders = {order.id: order for order in orders}
 
+    def snapshot_state(self) -> dict[str, Any]:
+        return {
+            "initial_cash": self.initial_cash,
+            "cash": self.cash,
+            "positions": dict(self.positions),
+            "last_prices": dict(self.last_prices),
+            "position_cost_basis": dict(self.position_cost_basis),
+            "realized_pnl": self.realized_pnl,
+            "daily_pnl": self.daily_pnl,
+            "peak_equity": self.peak_equity,
+            "last_trade_at_by_symbol": {
+                symbol: timestamp.isoformat()
+                for symbol, timestamp in self.last_trade_at_by_symbol.items()
+            },
+        }
+
+    def restore_state(self, state: dict[str, Any]) -> None:
+        """Restore a previously persisted paper account snapshot."""
+        self.initial_cash = float(state["initial_cash"])
+        self.cash = float(state["cash"])
+        self.positions = {key: float(value) for key, value in state["positions"].items()}
+        self.last_prices = {key: float(value) for key, value in state["last_prices"].items()}
+        self.position_cost_basis = {
+            key: float(value) for key, value in state["position_cost_basis"].items()
+        }
+        self.realized_pnl = float(state["realized_pnl"])
+        self.daily_pnl = float(state["daily_pnl"])
+        self.peak_equity = float(state["peak_equity"])
+        self.last_trade_at_by_symbol = {
+            symbol: datetime.fromisoformat(timestamp)
+            for symbol, timestamp in state["last_trade_at_by_symbol"].items()
+        }
+
     def submit_order(
         self,
         order: Order,
@@ -148,17 +182,17 @@ class PaperBroker:
         order = self.orders.get(order_id)
         if order is None:
             raise KeyError(f"unknown order id {order_id}")
-        if order.status in {OrderStatus.REJECTED, OrderStatus.CANCELLED, OrderStatus.CANCELED}:
-            raise ValueError(f"cannot fill a {order.status.value.lower()} order")
         if order.status is OrderStatus.FILLED:
             return order
+        if order.status not in {OrderStatus.OPEN, OrderStatus.PARTIALLY_FILLED}:
+            raise ValueError(f"cannot fill an order in status {order.status.value}")
 
-        if price <= 0:
-            raise ValueError("fill price must be positive")
+        if not math.isfinite(price) or price <= 0:
+            raise ValueError("fill price must be finite and positive")
 
         fill_quantity = order.remaining_quantity if quantity is None else float(quantity)
-        if fill_quantity <= 0:
-            raise ValueError("fill quantity must be positive")
+        if not math.isfinite(fill_quantity) or fill_quantity <= 0:
+            raise ValueError("fill quantity must be finite and positive")
         if fill_quantity > order.remaining_quantity:
             raise ValueError("fill quantity exceeds remaining order quantity")
 
@@ -168,23 +202,32 @@ class PaperBroker:
         else:
             adjusted_price *= 1 - (self.slippage_bps / 10_000)
 
-        order.apply_fill(fill_quantity, adjusted_price)
         fee = float(fees) if fees is not None else adjusted_price * fill_quantity * self.fee_rate
+        if not math.isfinite(fee) or fee < 0:
+            raise ValueError("fees must be finite and non-negative")
+        notional = adjusted_price * fill_quantity
+        if order.side == "BUY" and notional + fee > self.cash:
+            raise ValueError("insufficient paper cash to fill order")
+        if order.side == "SELL" and fill_quantity > self.positions.get(order.symbol, 0.0):
+            raise ValueError("sell fill quantity exceeds the open paper position")
+
+        order.apply_fill(fill_quantity, adjusted_price)
         if order.side == "BUY":
-            self.cash -= (adjusted_price * fill_quantity) + fee
+            self.cash -= notional + fee
             current_quantity = self.positions.get(order.symbol, 0.0)
             new_quantity = current_quantity + fill_quantity
             total_basis = self.position_cost_basis.get(order.symbol, 0.0)
-            self.position_cost_basis[order.symbol] = total_basis + (adjusted_price * fill_quantity)
+            self.position_cost_basis[order.symbol] = total_basis + notional + fee
             self.positions[order.symbol] = new_quantity
         else:
-            self.cash += (adjusted_price * fill_quantity) - fee
+            self.cash += notional - fee
             current = self.positions.get(order.symbol, 0.0)
             current_basis = self.position_cost_basis.get(order.symbol, 0.0)
             avg_cost = 0.0 if current <= 0 else current_basis / current
             realized = (adjusted_price - avg_cost) * fill_quantity
-            self.realized_pnl += realized
-            self.daily_pnl += realized
+            net_realized = realized - fee
+            self.realized_pnl += net_realized
+            self.daily_pnl += net_realized
             next_position = current - fill_quantity
             if next_position == 0:
                 self.positions.pop(order.symbol, None)

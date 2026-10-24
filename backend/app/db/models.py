@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Float, String
+from sqlalchemy import JSON, BigInteger, DateTime, Float, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -33,3 +33,18 @@ class PaperOrderRecord(Base):
     filled_quantity: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     avg_fill_price: Mapped[float | None] = mapped_column(Float)
     rejection_reason: Mapped[str | None] = mapped_column(String(500))
+
+
+class PaperPortfolioRecord(Base):
+    __tablename__ = "paper_portfolios"
+
+    account_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    initial_cash: Mapped[float] = mapped_column(Float, nullable=False)
+    cash: Mapped[float] = mapped_column(Float, nullable=False)
+    positions: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False)
+    last_prices: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False)
+    position_cost_basis: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False)
+    realized_pnl: Mapped[float] = mapped_column(Float, nullable=False)
+    daily_pnl: Mapped[float] = mapped_column(Float, nullable=False)
+    peak_equity: Mapped[float] = mapped_column(Float, nullable=False)
+    last_trade_at_by_symbol: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)

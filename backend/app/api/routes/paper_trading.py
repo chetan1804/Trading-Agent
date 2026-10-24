@@ -5,8 +5,11 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from trading.broker.order import Order
+from trading.broker.paper_broker import PaperBroker
+from trading.portfolio.manager import PortfolioManager
 
 from app.repositories.paper_orders import PaperOrderRepository
+from app.repositories.paper_portfolio import PaperPortfolioRepository
 
 router = APIRouter(prefix="/api", tags=["paper-trading"])
 
@@ -19,6 +22,16 @@ async def _save_order(request: Request, order: Order) -> None:
         await PaperOrderRepository(session).save(order)
 
 
+async def _save_fill_state(request: Request, order: Order, broker: PaperBroker) -> None:
+    session_factory = getattr(request.app.state, "database_session_factory", None)
+    if session_factory is None:
+        raise HTTPException(status_code=503, detail="paper trading storage is unavailable")
+    async with session_factory() as session:
+        await PaperOrderRepository(session).save(order, commit=False)
+        await PaperPortfolioRepository(session).save(broker.snapshot_state(), commit=False)
+        await session.commit()
+
+
 class PaperTradeRequest(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=32)
     side: str = Field(..., pattern="^(BUY|SELL)$")
@@ -29,7 +42,12 @@ class PaperTradeRequest(BaseModel):
     reduce_only: bool = False
 
 
-def _serialize_order(order: object) -> dict[str, object]:
+class PaperFillRequest(BaseModel):
+    price: float = Field(..., gt=0, allow_inf_nan=False)
+    quantity: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+
+
+def _serialize_order(order: Order) -> dict[str, object]:
     return {
         "id": order.id,
         "symbol": order.symbol,
@@ -100,6 +118,30 @@ async def cancel_paper_trade(request: Request, order_id: str) -> dict[str, objec
         raise HTTPException(status_code=409, detail=str(error)) from error
     await _save_order(request, order)
     return _serialize_order(order)
+
+
+@router.post("/paper-trading/orders/{order_id}/fill")
+async def fill_paper_trade(
+    request: Request,
+    order_id: str,
+    payload: PaperFillRequest,
+) -> dict[str, object]:
+    broker = getattr(request.app.state, "paper_broker", None)
+    if broker is None:
+        raise HTTPException(status_code=500, detail="paper broker is not initialized")
+    try:
+        order = broker.fill_order(
+            order_id,
+            price=payload.price,
+            quantity=payload.quantity,
+        )
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="paper order not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    await _save_fill_state(request, order, broker)
+    portfolio = PortfolioManager.from_broker(broker).snapshot()
+    return {"order": _serialize_order(order), "portfolio": portfolio}
 
 
 @router.get("/paper-trading/orders")

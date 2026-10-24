@@ -97,7 +97,7 @@ account_state = AccountRiskState(equity=100_000, available_cash=100_000)
 decision = risk.evaluate(proposal, account_state)
 ```
 
-The paper-order API uses the configured risk manager before accepting a new order. New buys require `ENABLE_TRADING=true`, an ingested market price or positive limit price, and a stop price; the requested quantity cannot exceed the risk-approved quantity. Sells are limited to reducing an existing paper position. The default kill switch is off. Paper order submissions and cancellations are stored in PostgreSQL and restored on restart; paper balances and positions are still in memory.
+The paper-order API uses the configured risk manager before accepting a new order. New buys require `ENABLE_TRADING=true`, an ingested market price or positive limit price, and a stop price; the requested quantity cannot exceed the risk-approved quantity. Sells are limited to reducing an existing paper position. The default kill switch is off. Paper orders, fills, and account state are stored in PostgreSQL and restored on restart. `POST /api/paper-trading/orders/{id}/fill` applies a simulated fill at the supplied reference price, including configured slippage and fees.
 
 ## Safety and scope
 

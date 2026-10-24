@@ -27,6 +27,7 @@ from app.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.repositories.market_data import MarketDataRepository
 from app.repositories.paper_orders import PaperOrderRepository
+from app.repositories.paper_portfolio import PaperPortfolioRepository
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -53,14 +54,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if app_settings.app_env == "test":
                 persisted_bars = {}
                 persisted_orders = []
+                persisted_portfolio = None
             else:
                 async with application.state.database_session_factory() as session:
                     market_repository = MarketDataRepository(session)
                     order_repository = PaperOrderRepository(session)
+                    portfolio_repository = PaperPortfolioRepository(session)
                     persisted_bars = await market_repository.list_all()
                     persisted_orders = await order_repository.list_all()
+                    persisted_portfolio = await portfolio_repository.load()
             application.state.market_data_store = persisted_bars
             application.state.paper_broker.restore_orders(persisted_orders)
+            if persisted_portfolio is not None:
+                application.state.paper_broker.restore_state(persisted_portfolio)
             yield
         finally:
             await application.state.redis_client.aclose()

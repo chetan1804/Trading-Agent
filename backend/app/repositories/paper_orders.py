@@ -14,7 +14,7 @@ class PaperOrderRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def save(self, order: Order) -> None:
+    async def save(self, order: Order, *, commit: bool = True) -> None:
         values = {
             "id": order.id,
             "symbol": order.symbol,
@@ -35,7 +35,8 @@ class PaperOrderRepository:
             set_={key: getattr(statement.excluded, key) for key in values if key != "id"},
         )
         await self.session.execute(statement)
-        await self.session.commit()
+        if commit:
+            await self.session.commit()
 
     async def list_all(self) -> list[Order]:
         result = await self.session.execute(
