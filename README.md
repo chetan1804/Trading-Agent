@@ -75,6 +75,8 @@ custom_engine = BacktestEngine(BacktestConfig(costs=TransactionCosts(commission_
 
 Default costs are placeholders (10 bps commission, 5 bps slippage, 2 bps spread); set `BacktestConfig(costs=TransactionCosts(...))` to match a documented market/broker assumption. The initial engine is single-symbol and long-only. Open final positions are marked to market, not forcibly liquidated.
 
+Run chronological walk-forward evaluation with `GET /api/backtests/walk-forward`. The endpoint reports separate training, validation, and test ranges and per-test-fold metrics. Its current baseline uses the same moving-average rule in each fold; the reusable `run_walk_forward` function accepts a strategy builder that can fit from the training and validation frames. Each test frame is passed to the backtest engine only after the strategy is built.
+
 ## Risk controls
 
 New exposure is disabled by default with `ENABLE_TRADING=false`. Before a buy, the risk manager requires a stop price and caps size by stop-distance risk, available cash, per-position notional, total exposure, daily loss, drawdown, open positions, and the symbol cooldown. A sell can only reduce an existing long position, even while the kill switch is off:
