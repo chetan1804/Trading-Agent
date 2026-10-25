@@ -59,3 +59,45 @@ async def predict_ml(
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return {"model_version": model_version, "prediction": prediction}
+
+
+@router.post("/models/{model_version}/promote")
+async def promote_ml(model_version: str, http_request: Request) -> dict[str, object]:
+    async with http_request.app.state.database_session_factory() as session:
+        model = await ModelRegistryRepository(session).promote(model_version)
+    if model is None:
+        raise HTTPException(status_code=404, detail="registered model not found")
+    return {"model_version": model_version, "status": "active"}
+
+
+@router.get("/models/active")
+async def get_active_ml(http_request: Request) -> dict[str, object]:
+    async with http_request.app.state.database_session_factory() as session:
+        active = await ModelRegistryRepository(session).get_active()
+    if active is None:
+        raise HTTPException(status_code=404, detail="no active model has been promoted")
+    model, promoted_at = active
+    return {
+        "model_version": model.model_version,
+        "model_type": model.model_type,
+        "promoted_at": promoted_at.isoformat(),
+        "metrics": model.metrics,
+    }
+
+
+@router.post("/models/predict")
+async def predict_active_ml(request: MLPredictRequest, http_request: Request) -> dict[str, object]:
+    async with http_request.app.state.database_session_factory() as session:
+        active = await ModelRegistryRepository(session).get_active()
+    if active is None:
+        raise HTTPException(status_code=404, detail="no active model has been promoted")
+    model, _ = active
+    try:
+        prediction = SignalModelTrainer.predict(
+            model.artifact,
+            feature_names=model.feature_names,
+            features=request.features,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {"model_version": model.model_version, "prediction": prediction}

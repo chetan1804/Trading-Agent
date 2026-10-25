@@ -63,3 +63,11 @@ class RegisteredModel(Base):
     validation_metrics: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False)
     split_rows: Mapped[dict[str, int]] = mapped_column(JSON, nullable=False)
     artifact: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+
+
+class ActiveModelRecord(Base):
+    __tablename__ = "active_models"
+
+    slot: Mapped[str] = mapped_column(String(32), primary_key=True)
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    promoted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

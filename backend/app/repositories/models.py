@@ -1,11 +1,11 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import RegisteredModel
+from app.db.models import ActiveModelRecord, RegisteredModel
 
 
 class ModelRegistryRepository:
@@ -44,6 +44,39 @@ class ModelRegistryRepository:
             select(RegisteredModel).where(RegisteredModel.model_version == model_version)
         )
         return result.scalar_one_or_none()
+
+    async def promote(self, model_version: str) -> RegisteredModel | None:
+        model = await self.get(model_version)
+        if model is None:
+            return None
+        statement = insert(ActiveModelRecord).values(
+            slot="default",
+            model_version=model_version,
+            promoted_at=datetime.now(UTC),
+        )
+        await self.session.execute(
+            statement.on_conflict_do_update(
+                index_elements=[ActiveModelRecord.slot],
+                set_={
+                    "model_version": statement.excluded.model_version,
+                    "promoted_at": statement.excluded.promoted_at,
+                },
+            )
+        )
+        await self.session.commit()
+        return model
+
+    async def get_active(self) -> tuple[RegisteredModel, datetime] | None:
+        result = await self.session.execute(
+            select(RegisteredModel, ActiveModelRecord.promoted_at)
+            .join(
+                ActiveModelRecord,
+                ActiveModelRecord.model_version == RegisteredModel.model_version,
+            )
+            .where(ActiveModelRecord.slot == "default")
+        )
+        row = result.one_or_none()
+        return (row[0], row[1]) if row else None
 
     @staticmethod
     def _metadata(record: RegisteredModel) -> dict[str, Any]:
