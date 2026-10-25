@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import pickle
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
@@ -21,6 +22,22 @@ class SignalModelTrainer:
         train_fraction: float = 0.6,
         validation_fraction: float = 0.2,
     ) -> dict[str, object]:
+        summary, _ = self.train_with_artifact(
+            features=features,
+            labels=labels,
+            train_fraction=train_fraction,
+            validation_fraction=validation_fraction,
+        )
+        return summary
+
+    def train_with_artifact(
+        self,
+        *,
+        features: dict[str, Sequence[float]],
+        labels: Sequence[int],
+        train_fraction: float = 0.6,
+        validation_fraction: float = 0.2,
+    ) -> tuple[dict[str, object], bytes]:
         if not features:
             raise ValueError("features must not be empty")
         if not labels:
@@ -94,7 +111,7 @@ class SignalModelTrainer:
         model_version = f"logistic-regression-{model_digest[:12]}"
         classifier = model.named_steps["classifier"]
 
-        return {
+        summary: dict[str, object] = {
             "status": "ok",
             "model_type": "logistic_regression",
             "model_version": model_version,
@@ -117,3 +134,15 @@ class SignalModelTrainer:
             },
             "classes": classifier.classes_.tolist(),
         }
+        return summary, pickle.dumps(model, protocol=pickle.HIGHEST_PROTOCOL)
+
+    @staticmethod
+    def predict(artifact: bytes, *, feature_names: list[str], features: dict[str, float]) -> int:
+        if set(features) != set(feature_names):
+            raise ValueError("features must match the registered model feature names")
+        values = np.asarray([[features[name] for name in feature_names]], dtype=float)
+        if not np.isfinite(values).all():
+            raise ValueError("features must contain only finite values")
+        # Only internally generated registry artifacts are loaded here.
+        model = pickle.loads(artifact)
+        return int(model.predict(values)[0])

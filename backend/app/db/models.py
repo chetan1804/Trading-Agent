@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, DateTime, Float, String
+from sqlalchemy import JSON, BigInteger, DateTime, Float, LargeBinary, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -48,3 +48,18 @@ class PaperPortfolioRecord(Base):
     daily_pnl: Mapped[float] = mapped_column(Float, nullable=False)
     peak_equity: Mapped[float] = mapped_column(Float, nullable=False)
     last_trade_at_by_symbol: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)
+
+
+class RegisteredModel(Base):
+    __tablename__ = "registered_models"
+
+    model_version: Mapped[str] = mapped_column(String(64), primary_key=True)
+    model_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    dataset_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    training_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    feature_names: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    hyperparameters: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    metrics: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False)
+    validation_metrics: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False)
+    split_rows: Mapped[dict[str, int]] = mapped_column(JSON, nullable=False)
+    artifact: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
