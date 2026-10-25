@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from trading.ml.trainer import SignalModelTrainer
@@ -10,6 +12,7 @@ router = APIRouter(prefix="/api", tags=["ml"])
 class MLTrainRequest(BaseModel):
     features: dict[str, list[float]] = Field(default_factory=dict)
     labels: list[int] = Field(default_factory=list)
+    model_type: Literal["logistic_regression", "random_forest"] = "logistic_regression"
     train_fraction: float = Field(default=0.6, gt=0, lt=1)
     validation_fraction: float = Field(default=0.2, gt=0, lt=1)
 
@@ -25,6 +28,7 @@ async def train_ml(request: MLTrainRequest, http_request: Request) -> dict[str, 
         summary, artifact = trainer.train_with_artifact(
             features=request.features,
             labels=request.labels,
+            model_type=request.model_type,
             train_fraction=request.train_fraction,
             validation_fraction=request.validation_fraction,
         )

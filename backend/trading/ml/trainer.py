@@ -5,8 +5,10 @@ import json
 import pickle
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from typing import Literal
 
 import numpy as np
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.pipeline import Pipeline
@@ -19,12 +21,14 @@ class SignalModelTrainer:
         *,
         features: dict[str, Sequence[float]],
         labels: Sequence[int],
+        model_type: Literal["logistic_regression", "random_forest"] = "logistic_regression",
         train_fraction: float = 0.6,
         validation_fraction: float = 0.2,
     ) -> dict[str, object]:
         summary, _ = self.train_with_artifact(
             features=features,
             labels=labels,
+            model_type=model_type,
             train_fraction=train_fraction,
             validation_fraction=validation_fraction,
         )
@@ -35,6 +39,7 @@ class SignalModelTrainer:
         *,
         features: dict[str, Sequence[float]],
         labels: Sequence[int],
+        model_type: Literal["logistic_regression", "random_forest"] = "logistic_regression",
         train_fraction: float = 0.6,
         validation_fraction: float = 0.2,
     ) -> tuple[dict[str, object], bytes]:
@@ -72,12 +77,29 @@ class SignalModelTrainer:
         if np.unique(y_train).size < 2:
             raise ValueError("training labels must contain both binary classes")
 
-        model = Pipeline(
-            [
-                ("scaler", StandardScaler()),
-                ("classifier", LogisticRegression(max_iter=1000)),
-            ]
-        )
+        if model_type == "logistic_regression":
+            scaler: StandardScaler | str = StandardScaler()
+            classifier = LogisticRegression(max_iter=1000, random_state=42)
+            estimator_parameters: dict[str, object] = {"max_iter": 1000, "random_state": 42}
+        elif model_type == "random_forest":
+            scaler = "passthrough"
+            classifier = RandomForestClassifier(
+                n_estimators=200,
+                max_depth=8,
+                min_samples_leaf=2,
+                random_state=42,
+                n_jobs=1,
+            )
+            estimator_parameters = {
+                "n_estimators": 200,
+                "max_depth": 8,
+                "min_samples_leaf": 2,
+                "random_state": 42,
+                "n_jobs": 1,
+            }
+        else:
+            raise ValueError("model_type must be logistic_regression or random_forest")
+        model = Pipeline([("scaler", scaler), ("classifier", classifier)])
         model.fit(x_train, y_train)
         validation_predictions = model.predict(x_validation)
         test_predictions = model.predict(x_test)
@@ -103,25 +125,37 @@ class SignalModelTrainer:
             ).encode("utf-8")
         ).hexdigest()
         dataset_version = f"sha256:{dataset_digest}"
-        model_signature = (
-            f"{dataset_digest}:logistic-regression:1000:standard-scaler:{train_fraction}:"
-            f"{validation_fraction}"
+        model_configuration = json.dumps(
+            {
+                "model_type": model_type,
+                "parameters": estimator_parameters,
+                "train_fraction": train_fraction,
+                "validation_fraction": validation_fraction,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
         )
-        model_digest = hashlib.sha256(model_signature.encode("utf-8")).hexdigest()
-        model_version = f"logistic-regression-{model_digest[:12]}"
+        model_digest = hashlib.sha256(
+            f"{dataset_digest}:{model_configuration}".encode()
+        ).hexdigest()
+        model_version = f"{model_type.replace('_', '-')}-{model_digest[:12]}"
         classifier = model.named_steps["classifier"]
 
         summary: dict[str, object] = {
             "status": "ok",
-            "model_type": "logistic_regression",
+            "model_type": model_type,
             "model_version": model_version,
             "dataset_version": dataset_version,
             "training_date": datetime.now(UTC).isoformat(),
             "feature_names": feature_names,
             "hyperparameters": {
-                "scaler": "StandardScaler",
-                "classifier": "LogisticRegression",
-                "max_iter": 1000,
+                "scaler": "StandardScaler" if model_type == "logistic_regression" else None,
+                "classifier": (
+                    "LogisticRegression"
+                    if model_type == "logistic_regression"
+                    else "RandomForestClassifier"
+                ),
+                **estimator_parameters,
                 "train_fraction": train_fraction,
                 "validation_fraction": validation_fraction,
             },
