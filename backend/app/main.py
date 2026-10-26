@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -85,6 +86,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     application.state.market_data_store: dict[str, list[dict[str, object]]] = {}
     application.state.strategy_decisions: dict[str, dict[str, object]] = {}
+    application.state.paper_order_lock = asyncio.Lock()
     application.include_router(health_router)
     application.include_router(market_data_router)
     application.include_router(features_router)

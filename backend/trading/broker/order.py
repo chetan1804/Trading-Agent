@@ -35,6 +35,7 @@ class Order:
     avg_fill_price: float | None = None
     rejection_reason: str | None = None
     id: str = field(default_factory=lambda: f"ord-{uuid.uuid4().hex[:12]}")
+    idempotency_key: str | None = None
 
     def __post_init__(self) -> None:
         if not self.symbol or not self.symbol.strip():
@@ -116,9 +117,8 @@ class Order:
         if self.avg_fill_price is None:
             self.avg_fill_price = float(price)
         else:
-            weighted_total = (
-                (self.avg_fill_price * self.filled_quantity)
-                + (float(price) * quantity)
+            weighted_total = (self.avg_fill_price * self.filled_quantity) + (
+                float(price) * quantity
             )
             self.avg_fill_price = weighted_total / new_total
 

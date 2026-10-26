@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from trading.broker.order import Order
 from trading.broker.paper_broker import PaperBroker
@@ -60,12 +60,31 @@ def _serialize_order(order: Order) -> dict[str, object]:
         "limit_price": order.limit_price,
         "stop_price": order.stop_price,
         "rejection_reason": order.rejection_reason,
+        "idempotency_key": order.idempotency_key,
         "created_at": order.created_at.isoformat(),
     }
 
 
 @router.post("/paper-trading/orders")
-async def create_paper_trade(request: Request, payload: PaperTradeRequest) -> dict[str, object]:
+async def create_paper_trade(
+    request: Request,
+    payload: PaperTradeRequest,
+    idempotency_key: str | None = Header(
+        default=None, alias="Idempotency-Key", min_length=8, max_length=128
+    ),
+) -> dict[str, object]:
+    lock = getattr(request.app.state, "paper_order_lock", None)
+    if lock is None:
+        return await _create_paper_trade(request, payload, idempotency_key)
+    async with lock:
+        return await _create_paper_trade(request, payload, idempotency_key)
+
+
+async def _create_paper_trade(
+    request: Request,
+    payload: PaperTradeRequest,
+    idempotency_key: str | None,
+) -> dict[str, object]:
     broker = getattr(request.app.state, "paper_broker", None)
     if broker is None:
         raise HTTPException(status_code=500, detail="paper broker is not initialized")
@@ -86,15 +105,22 @@ async def create_paper_trade(request: Request, payload: PaperTradeRequest) -> di
             detail="a positive limit price or an ingested market price is required",
         )
 
-    order = broker.create_order(
-        symbol=symbol,
-        side=payload.side,
-        quantity=float(payload.quantity),
-        order_type=payload.order_type,
-        limit_price=payload.limit_price,
-        stop_price=payload.stop_price,
-        reduce_only=payload.reduce_only,
-    )
+    try:
+        order = broker.create_order(
+            symbol=symbol,
+            side=payload.side,
+            quantity=float(payload.quantity),
+            order_type=payload.order_type,
+            limit_price=payload.limit_price,
+            stop_price=payload.stop_price,
+            reduce_only=payload.reduce_only,
+            idempotency_key=idempotency_key,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    if order.status.value != "NEW":
+        await _save_order(request, order)
+        return _serialize_order(order)
     broker.submit_order(
         order,
         market_price=market_price,

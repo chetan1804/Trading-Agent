@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, DateTime, Float, LargeBinary, String
+from sqlalchemy import JSON, BigInteger, DateTime, Float, LargeBinary, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -20,6 +20,7 @@ class MarketBar(Base):
 
 class PaperOrderRecord(Base):
     __tablename__ = "paper_orders"
+    __table_args__ = (UniqueConstraint("idempotency_key", name="uq_paper_orders_idempotency_key"),)
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     symbol: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
@@ -33,6 +34,7 @@ class PaperOrderRecord(Base):
     filled_quantity: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     avg_fill_price: Mapped[float | None] = mapped_column(Float)
     rejection_reason: Mapped[str | None] = mapped_column(String(500))
+    idempotency_key: Mapped[str | None] = mapped_column(String(128))
 
 
 class PaperPortfolioRecord(Base):

@@ -56,8 +56,24 @@ class PaperBroker:
         limit_price: float | None = None,
         stop_price: float | None = None,
         reduce_only: bool = False,
+        idempotency_key: str | None = None,
     ) -> Order:
         _ = reduce_only
+        if idempotency_key is not None:
+            for existing in self.orders.values():
+                if existing.idempotency_key != idempotency_key:
+                    continue
+                same_request = (
+                    existing.symbol == symbol
+                    and existing.side == side
+                    and existing.quantity == quantity
+                    and existing.order_type == order_type
+                    and existing.limit_price == limit_price
+                    and existing.stop_price == stop_price
+                )
+                if not same_request:
+                    raise ValueError("idempotency key was already used for a different order")
+                return existing
         order = Order(
             symbol=symbol,
             side=side,
@@ -65,6 +81,7 @@ class PaperBroker:
             order_type=order_type,
             limit_price=limit_price,
             stop_price=stop_price,
+            idempotency_key=idempotency_key,
         )
         self.orders[order.id] = order
         return order
