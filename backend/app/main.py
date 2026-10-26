@@ -77,12 +77,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    application.state.app_env = app_settings.app_env
     application.state.risk_manager = RiskManager(enabled=app_settings.enable_trading)
     application.state.paper_broker = PaperBroker(
         initial_cash=100_000.0,
         risk_manager=application.state.risk_manager,
     )
     application.state.market_data_store: dict[str, list[dict[str, object]]] = {}
+    application.state.strategy_decisions: dict[str, dict[str, object]] = {}
     application.include_router(health_router)
     application.include_router(market_data_router)
     application.include_router(features_router)

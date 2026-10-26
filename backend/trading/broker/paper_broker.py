@@ -257,3 +257,7 @@ class PaperBroker:
             peak_equity=self.peak_equity,
             last_trade_at_by_symbol=dict(self.last_trade_at_by_symbol),
         )
+
+    def risk_account(self) -> AccountRiskState:
+        """Expose a snapshot for orchestration without allowing state mutation."""
+        return self._risk_account()

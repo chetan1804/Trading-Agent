@@ -50,6 +50,23 @@ class PaperPortfolioRecord(Base):
     last_trade_at_by_symbol: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)
 
 
+class StrategyDecisionRecord(Base):
+    __tablename__ = "strategy_decisions"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    strategy_id: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    signal_timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    action: Mapped[str] = mapped_column(String(8), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    reason: Mapped[str] = mapped_column(String(1000), nullable=False)
+    approved: Mapped[bool] = mapped_column(nullable=False)
+    risk_reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    quantity: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    order_id: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class RegisteredModel(Base):
     __tablename__ = "registered_models"
 
