@@ -85,7 +85,7 @@ After ingesting OHLCV data, run the latest moving-average signal through risk ch
 
 ## Risk controls
 
-New exposure is disabled by default with `ENABLE_TRADING=false`. Before a buy, the risk manager requires a stop price and caps size by stop-distance risk, available cash, per-position notional, total exposure, daily loss, drawdown, open positions, and the symbol cooldown. A sell can only reduce an existing long position, even while the kill switch is off:
+New exposure is disabled by default with `ENABLE_TRADING=false`. Configure risk limits with `RISK_PER_TRADE`, `MAX_POSITION_FRACTION`, `MAX_PORTFOLIO_EXPOSURE_FRACTION`, `MAX_OPEN_POSITIONS`, `MAX_DAILY_LOSS_FRACTION`, `MAX_DRAWDOWN_FRACTION`, and `SYMBOL_COOLDOWN_SECONDS`; fractions must be greater than zero and at most one. Before a buy, the risk manager requires a stop price and caps size by stop-distance risk, available cash, per-position notional, total exposure, daily loss, drawdown, open positions, and the symbol cooldown. A sell can only reduce an existing long position, even while the kill switch is off:
 
 ```python
 from datetime import UTC, datetime

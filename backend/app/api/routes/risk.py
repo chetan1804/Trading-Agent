@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from trading.risk.manager import AccountRiskState, RiskManager, TradeProposal
 
@@ -29,25 +29,29 @@ class RiskEvaluationRequest(BaseModel):
 
 
 @router.post("/risk/evaluate")
-async def evaluate_risk(request: RiskEvaluationRequest) -> dict[str, object]:
+async def evaluate_risk(request: Request, payload: RiskEvaluationRequest) -> dict[str, object]:
     proposal = TradeProposal(
-        symbol=request.symbol.strip(),
-        side=request.side.upper(),
-        entry_price=request.entry_price,
-        timestamp=request.timestamp or datetime.now(UTC),
-        stop_loss_price=request.stop_loss_price,
-        reduce_quantity=request.reduce_quantity,
+        symbol=payload.symbol.strip(),
+        side=payload.side.upper(),
+        entry_price=payload.entry_price,
+        timestamp=payload.timestamp or datetime.now(UTC),
+        stop_loss_price=payload.stop_loss_price,
+        reduce_quantity=payload.reduce_quantity,
     )
     account = AccountRiskState(
-        equity=request.account.equity,
-        available_cash=request.account.available_cash,
-        current_exposure=request.account.current_exposure,
-        positions=request.account.positions,
-        daily_pnl=request.account.daily_pnl,
-        peak_equity=request.account.peak_equity,
-        last_trade_at_by_symbol=request.account.last_trade_at_by_symbol,
+        equity=payload.account.equity,
+        available_cash=payload.account.available_cash,
+        current_exposure=payload.account.current_exposure,
+        positions=payload.account.positions,
+        daily_pnl=payload.account.daily_pnl,
+        peak_equity=payload.account.peak_equity,
+        last_trade_at_by_symbol=payload.account.last_trade_at_by_symbol,
     )
-    decision = RiskManager(enabled=request.enabled).evaluate(proposal, account)
+    configured_manager = getattr(request.app.state, "risk_manager", None)
+    decision = RiskManager(
+        limits=configured_manager.limits if configured_manager else None,
+        enabled=payload.enabled,
+    ).evaluate(proposal, account)
     return {
         "approved": decision.approved,
         "reason": decision.reason,

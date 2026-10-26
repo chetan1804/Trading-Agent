@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from trading.broker.paper_broker import PaperBroker
+from trading.risk.limits import RiskLimits
 from trading.risk.manager import RiskManager
 
 from app.api.routes.agents import router as agents_router
@@ -31,6 +32,21 @@ from app.repositories.paper_orders import PaperOrderRepository
 from app.repositories.paper_portfolio import PaperPortfolioRepository
 
 
+def _build_risk_manager(settings: Settings) -> RiskManager:
+    return RiskManager(
+        limits=RiskLimits(
+            risk_per_trade=settings.risk_per_trade,
+            max_position_fraction=settings.max_position_fraction,
+            max_portfolio_exposure_fraction=settings.max_portfolio_exposure_fraction,
+            max_open_positions=settings.max_open_positions,
+            max_daily_loss_fraction=settings.max_daily_loss_fraction,
+            max_drawdown_fraction=settings.max_drawdown_fraction,
+            cooldown_seconds=settings.symbol_cooldown_seconds,
+        ),
+        enabled=settings.enable_trading,
+    )
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     app_settings = settings or get_settings()
     configure_logging(app_settings.log_level)
@@ -46,7 +62,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.redis_client = Redis.from_url(
             app_settings.redis_url, decode_responses=True
         )
-        application.state.risk_manager = RiskManager(enabled=app_settings.enable_trading)
+        application.state.risk_manager = _build_risk_manager(app_settings)
         application.state.paper_broker = PaperBroker(
             initial_cash=100_000.0,
             risk_manager=application.state.risk_manager,
@@ -79,7 +95,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     application.state.app_env = app_settings.app_env
-    application.state.risk_manager = RiskManager(enabled=app_settings.enable_trading)
+    application.state.risk_manager = _build_risk_manager(app_settings)
     application.state.paper_broker = PaperBroker(
         initial_cash=100_000.0,
         risk_manager=application.state.risk_manager,
