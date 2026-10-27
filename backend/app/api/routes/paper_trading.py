@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 from trading.broker.order import Order
 from trading.broker.paper_broker import PaperBroker
 from trading.portfolio.manager import PortfolioManager
 
+from app.core.security import require_api_key
 from app.repositories.paper_orders import PaperOrderRepository
 from app.repositories.paper_portfolio import PaperPortfolioRepository
 
@@ -72,6 +73,7 @@ async def create_paper_trade(
     idempotency_key: str | None = Header(
         default=None, alias="Idempotency-Key", min_length=8, max_length=128
     ),
+    _auth: None = Depends(require_api_key),
 ) -> dict[str, object]:
     lock = getattr(request.app.state, "paper_order_lock", None)
     if lock is None:
@@ -132,7 +134,9 @@ async def _create_paper_trade(
 
 
 @router.post("/paper-trading/orders/{order_id}/cancel")
-async def cancel_paper_trade(request: Request, order_id: str) -> dict[str, object]:
+async def cancel_paper_trade(
+    request: Request, order_id: str, _auth: None = Depends(require_api_key)
+) -> dict[str, object]:
     broker = getattr(request.app.state, "paper_broker", None)
     if broker is None:
         raise HTTPException(status_code=500, detail="paper broker is not initialized")
@@ -151,6 +155,7 @@ async def fill_paper_trade(
     request: Request,
     order_id: str,
     payload: PaperFillRequest,
+    _auth: None = Depends(require_api_key),
 ) -> dict[str, object]:
     broker = getattr(request.app.state, "paper_broker", None)
     if broker is None:
@@ -171,7 +176,9 @@ async def fill_paper_trade(
 
 
 @router.get("/paper-trading/orders")
-async def list_paper_trades(request: Request) -> dict[str, object]:
+async def list_paper_trades(
+    request: Request, _auth: None = Depends(require_api_key)
+) -> dict[str, object]:
     broker = getattr(request.app.state, "paper_broker", None)
     if broker is None:
         raise HTTPException(status_code=500, detail="paper broker is not initialized")

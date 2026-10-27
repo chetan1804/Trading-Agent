@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from trading.broker.order import Order
 from trading.data.synthetic import generate_synthetic_ohlcv
@@ -11,6 +11,7 @@ from trading.portfolio.manager import PortfolioManager
 from trading.risk.manager import TradeProposal
 from trading.strategies.moving_average import MovingAverageCrossoverStrategy
 
+from app.core.security import require_api_key
 from app.repositories.paper_orders import PaperOrderRepository
 from app.repositories.strategy_decisions import StrategyDecisionRepository
 
@@ -80,7 +81,11 @@ async def generate_strategy_signals(
 
 
 @router.post("/strategies/run")
-async def run_strategy(request: Request, payload: StrategyRunRequest) -> dict[str, object]:
+async def run_strategy(
+    request: Request,
+    payload: StrategyRunRequest,
+    _auth: None = Depends(require_api_key),
+) -> dict[str, object]:
     """Evaluate the latest close, pass actionable signals through risk, and stage paper orders."""
     symbol = payload.symbol.strip().upper()
     if not symbol:
@@ -193,7 +198,9 @@ async def run_strategy(request: Request, payload: StrategyRunRequest) -> dict[st
 
 @router.get("/strategies/decisions")
 async def list_strategy_decisions(
-    request: Request, limit: int = Query(default=50, ge=1, le=200)
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=200),
+    _auth: None = Depends(require_api_key),
 ) -> dict[str, object]:
     session_factory = getattr(request.app.state, "database_session_factory", None)
     if getattr(request.app.state, "app_env", "") == "test" or session_factory is None:

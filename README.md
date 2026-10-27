@@ -110,3 +110,5 @@ The paper-order API uses the configured risk manager before accepting a new orde
 ## Safety and scope
 
 The broker mode is fixed to paper and live trading is disabled. The paper-order endpoint can submit unfilled paper orders after risk checks; it does not connect to an external broker. Backtests and paper-trading results are research outputs, not guarantees of future performance.
+
+Set `API_AUTH_ENABLED=true` and provide an `API_KEY` of at least 32 characters to protect paper order operations, strategy execution and decision history, market-data ingestion, and model training/promotion with the `X-API-Key` request header. Production (`APP_ENV=production`) refuses to start without API auth enabled and a valid key. Development defaults to auth disabled for local setup. Configure browser origins as a comma-separated `CORS_ALLOWED_ORIGINS`; credentials are not allowed by CORS.

@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from trading.broker.paper_broker import PaperBroker
@@ -95,6 +96,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     application.state.app_env = app_settings.app_env
+    application.state.settings = app_settings
+    allowed_origins = [
+        origin.strip() for origin in app_settings.cors_allowed_origins.split(",") if origin.strip()
+    ]
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=allowed_origins,
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type", "X-API-Key", "Idempotency-Key"],
+    )
     application.state.risk_manager = _build_risk_manager(app_settings)
     application.state.paper_broker = PaperBroker(
         initial_cash=100_000.0,

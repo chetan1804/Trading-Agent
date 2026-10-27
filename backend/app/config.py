@@ -1,7 +1,7 @@
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import Field
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,6 +20,20 @@ class Settings(BaseSettings):
     max_daily_loss_fraction: float = Field(default=0.02, gt=0, le=1)
     max_drawdown_fraction: float = Field(default=0.15, gt=0, le=1)
     symbol_cooldown_seconds: int = Field(default=3600, ge=0)
+    api_auth_enabled: bool = False
+    api_key: SecretStr | None = None
+    cors_allowed_origins: str = "http://localhost:5173"
+
+    @model_validator(mode="after")
+    def validate_api_auth(self) -> Self:
+        production = self.app_env.lower() in {"production", "prod"}
+        if production and not self.api_auth_enabled:
+            raise ValueError("API_AUTH_ENABLED must be true in production")
+        if self.api_auth_enabled and (
+            self.api_key is None or len(self.api_key.get_secret_value()) < 32
+        ):
+            raise ValueError("API_KEY must contain at least 32 characters when API auth is enabled")
+        return self
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

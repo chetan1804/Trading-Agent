@@ -1,9 +1,10 @@
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from trading.ml.trainer import SignalModelTrainer
 
+from app.core.security import require_api_key
 from app.repositories.models import ModelRegistryRepository
 
 router = APIRouter(prefix="/api", tags=["ml"])
@@ -22,7 +23,11 @@ class MLPredictRequest(BaseModel):
 
 
 @router.post("/ml/train")
-async def train_ml(request: MLTrainRequest, http_request: Request) -> dict[str, object]:
+async def train_ml(
+    request: MLTrainRequest,
+    http_request: Request,
+    _auth: None = Depends(require_api_key),
+) -> dict[str, object]:
     trainer = SignalModelTrainer()
     try:
         summary, artifact = trainer.train_with_artifact(
@@ -66,7 +71,11 @@ async def predict_ml(
 
 
 @router.post("/models/{model_version}/promote")
-async def promote_ml(model_version: str, http_request: Request) -> dict[str, object]:
+async def promote_ml(
+    model_version: str,
+    http_request: Request,
+    _auth: None = Depends(require_api_key),
+) -> dict[str, object]:
     async with http_request.app.state.database_session_factory() as session:
         model = await ModelRegistryRepository(session).promote(model_version)
     if model is None:

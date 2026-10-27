@@ -3,10 +3,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, model_validator
 from trading.data.synthetic import generate_synthetic_ohlcv
 
+from app.core.security import require_api_key
 from app.repositories.market_data import MarketDataRepository
 
 
@@ -194,6 +195,7 @@ class MarketDataIngestRequest(BaseModel):
 async def market_data_ingest(
     request: Request,
     payload: MarketDataIngestRequest,
+    _auth: None = Depends(require_api_key),
 ) -> dict[str, object]:
     store = getattr(request.app.state, "market_data_store", None)
     if store is None:
