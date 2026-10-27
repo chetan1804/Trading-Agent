@@ -11,6 +11,7 @@ async def require_api_key(
 ) -> None:
     settings = request.app.state.settings
     if not settings.api_auth_enabled:
+        request.state.audit_actor = "local"
         return
     expected = settings.api_key.get_secret_value() if settings.api_key is not None else ""
     if not x_api_key or not secrets.compare_digest(x_api_key, expected):
@@ -19,3 +20,4 @@ async def require_api_key(
             detail="valid API key required",
             headers={"WWW-Authenticate": "ApiKey"},
         )
+    request.state.audit_actor = "api_key"

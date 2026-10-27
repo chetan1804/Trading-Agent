@@ -1,10 +1,14 @@
 import asyncio
+import logging
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from trading.broker.paper_broker import PaperBroker
 from trading.risk.limits import RiskLimits
@@ -12,6 +16,7 @@ from trading.risk.manager import RiskManager
 
 from app.api.routes.agents import router as agents_router
 from app.api.routes.ai import router as ai_router
+from app.api.routes.audit import router as audit_router
 from app.api.routes.backtests import router as backtests_router
 from app.api.routes.broker import router as broker_router
 from app.api.routes.dashboard import router as dashboard_router
@@ -28,9 +33,12 @@ from app.api.routes.risk import router as risk_router
 from app.api.routes.strategies import router as strategies_router
 from app.config import Settings, get_settings
 from app.core.logging import configure_logging
+from app.repositories.audit_logs import AuditLogRepository
 from app.repositories.market_data import MarketDataRepository
 from app.repositories.paper_orders import PaperOrderRepository
 from app.repositories.paper_portfolio import PaperPortfolioRepository
+
+logger = logging.getLogger(__name__)
 
 
 def _build_risk_manager(settings: Settings) -> RiskManager:
@@ -115,7 +123,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.market_data_store: dict[str, list[dict[str, object]]] = {}
     application.state.strategy_decisions: dict[str, dict[str, object]] = {}
     application.state.paper_order_lock = asyncio.Lock()
+    application.state.audit_events = []
+
+    @application.middleware("http")
+    async def audit_api_writes(request, call_next):
+        if request.method not in {
+            "POST",
+            "PUT",
+            "PATCH",
+            "DELETE",
+        } or not request.url.path.startswith("/api/"):
+            return await call_next(request)
+        request_id = str(uuid.uuid4())
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        route = request.scope.get("route")
+        event = {
+            "id": str(uuid.uuid4()),
+            "request_id": request_id,
+            "actor": getattr(request.state, "audit_actor", "anonymous"),
+            "method": request.method,
+            "path": getattr(route, "path", request.url.path),
+            "status_code": response.status_code,
+            "created_at": datetime.now(UTC),
+        }
+        if app_settings.app_env == "test":
+            application.state.audit_events.append(
+                {**event, "created_at": event["created_at"].isoformat()}
+            )
+        else:
+            try:
+                async with application.state.database_session_factory() as session:
+                    await AuditLogRepository(session).save(event)
+            except SQLAlchemyError:
+                logger.exception("audit_event_persist_failed request_id=%s", request_id)
+        return response
+
     application.include_router(health_router)
+    application.include_router(audit_router)
     application.include_router(market_data_router)
     application.include_router(features_router)
     application.include_router(strategies_router)
