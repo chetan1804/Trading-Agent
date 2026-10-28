@@ -3,10 +3,15 @@ import math
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query, Request
 from trading.backtesting.engine import BacktestConfig, BacktestEngine
-from trading.backtesting.metrics import calculate_performance_metrics
+from trading.backtesting.metrics import (
+    calculate_monthly_returns,
+    calculate_performance_metrics,
+    calculate_trade_distribution,
+)
 from trading.backtesting.walk_forward import WalkForwardConfig, run_walk_forward
 from trading.data.synthetic import generate_synthetic_ohlcv
 from trading.features.feature_pipeline import engineer_features
+from trading.strategies.buy_hold import BuyAndHoldStrategy
 from trading.strategies.moving_average import MovingAverageCrossoverStrategy
 
 router = APIRouter(prefix="/api", tags=["backtests"])
@@ -48,7 +53,15 @@ async def run_backtest(
     strategy = MovingAverageCrossoverStrategy(fast_window=20, slow_window=50)
     engine = BacktestEngine(BacktestConfig(initial_cash=initial_cash))
     result = engine.run(run_data, strategy)
-    metrics = calculate_performance_metrics(result.equity_curve, result.trades)
+    metrics = calculate_performance_metrics(
+        result.equity_curve, result.trades, turnover_value=result.turnover
+    )
+    benchmark = engine.run(run_data, BuyAndHoldStrategy())
+    benchmark_metrics = calculate_performance_metrics(
+        benchmark.equity_curve,
+        benchmark.trades,
+        turnover_value=benchmark.turnover,
+    )
 
     normalized_metrics = _finite_metrics(metrics)
     return {
@@ -59,6 +72,35 @@ async def run_backtest(
         "ending_equity": float(result.ending_equity),
         "trade_count": int(len(result.trades)),
         "metrics": normalized_metrics,
+        "monthly_returns": calculate_monthly_returns(result.equity_curve),
+        "trade_distribution": calculate_trade_distribution(result.trades),
+        "trades": [
+            {
+                "symbol": str(row.symbol),
+                "strategy_id": str(row.strategy_id),
+                "entry_time": pd.Timestamp(row.entry_time).isoformat(),
+                "exit_time": pd.Timestamp(row.exit_time).isoformat(),
+                "quantity": float(row.quantity),
+                "entry_price": float(row.entry_price),
+                "exit_price": float(row.exit_price),
+                "pnl": float(row.pnl),
+                "return_fraction": float(row.return_fraction),
+                "holding_bars": int(row.holding_bars),
+            }
+            for row in result.trades.itertuples(index=False)
+        ],
+        "equity_curve": [
+            {
+                "timestamp": pd.Timestamp(row.timestamp).isoformat(),
+                "equity": float(row.equity),
+                "drawdown": float(row.drawdown),
+            }
+            for row in result.equity_curve.itertuples(index=False)
+        ],
+        "comparison": {
+            "moving_average": normalized_metrics,
+            "buy_and_hold": _finite_metrics(benchmark_metrics),
+        },
     }
 
 
