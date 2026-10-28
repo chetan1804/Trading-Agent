@@ -113,4 +113,6 @@ The broker mode is fixed to paper and live trading is disabled. The paper-order 
 
 Set `API_AUTH_ENABLED=true` and provide an `API_KEY` of at least 32 characters to protect paper order operations, strategy execution and decision history, market-data ingestion, and model training/promotion with the `X-API-Key` request header. Production (`APP_ENV=production`) refuses to start without API auth enabled and a valid key. Development defaults to auth disabled for local setup. Configure browser origins as a comma-separated `CORS_ALLOWED_ORIGINS`; credentials are not allowed by CORS.
 
+All `/api` requests use Redis-backed fixed-window rate limits configured by `RATE_LIMIT_REQUESTS` and `RATE_LIMIT_WINDOW_SECONDS` (120 requests per 60 seconds by default), counted by client address and, when sent, API key. Responses include rate-limit headers. Exceeding the limit returns HTTP 429 with `Retry-After`; if Redis is unavailable, API requests return HTTP 503. `/health` endpoints and test mode bypass rate limiting.
+
 API write requests under `/api` create audit records with a generated request ID, actor category, route, method, response status, and UTC time. Request bodies, API keys, and other credentials are excluded. Browse recent records with `GET /api/audit-logs` (API key required when auth is enabled); records are stored in PostgreSQL by the `audit_logs` migration.

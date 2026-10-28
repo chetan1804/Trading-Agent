@@ -22,6 +22,8 @@ services:
       API_AUTH_ENABLED: ${API_AUTH_ENABLED:-false}
       API_KEY: ${API_KEY:-}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      RATE_LIMIT_REQUESTS: ${RATE_LIMIT_REQUESTS:-120}
+      RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
     depends_on:
       postgres:
         condition: service_healthy

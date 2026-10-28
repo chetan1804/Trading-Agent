@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     api_auth_enabled: bool = False
     api_key: SecretStr | None = None
     cors_allowed_origins: str = "http://localhost:5173"
+    rate_limit_requests: int = Field(default=120, ge=1)
+    rate_limit_window_seconds: int = Field(default=60, ge=1)
 
     @model_validator(mode="after")
     def validate_api_auth(self) -> Self:

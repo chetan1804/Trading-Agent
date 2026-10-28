@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import logging
 import uuid
 from collections.abc import AsyncIterator
@@ -7,7 +8,9 @@ from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from trading.broker.paper_broker import PaperBroker
@@ -39,6 +42,25 @@ from app.repositories.paper_orders import PaperOrderRepository
 from app.repositories.paper_portfolio import PaperPortfolioRepository
 
 logger = logging.getLogger(__name__)
+
+_RATE_LIMIT_SCRIPT = """
+local limit = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local max_count = 0
+local retry_after = window
+for _, key in ipairs(KEYS) do
+    local count = redis.call('INCR', key)
+    if count == 1 then
+        redis.call('EXPIRE', key, window)
+    end
+    local ttl = redis.call('TTL', key)
+    if count > max_count then
+        max_count = count
+        retry_after = ttl
+    end
+end
+return {max_count, retry_after}
+"""
 
 
 def _build_risk_manager(settings: Settings) -> RiskManager:
@@ -124,6 +146,60 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.state.strategy_decisions: dict[str, dict[str, object]] = {}
     application.state.paper_order_lock = asyncio.Lock()
     application.state.audit_events = []
+
+    @application.middleware("http")
+    async def rate_limit_api(request, call_next):
+        if (
+            app_settings.app_env == "test"
+            or not request.url.path.startswith("/api/")
+            or request.method == "OPTIONS"
+        ):
+            return await call_next(request)
+        client_host = request.client.host if request.client is not None else "unknown"
+        identities = [f"ip:{client_host}"]
+        api_key = request.headers.get("x-api-key")
+        if api_key:
+            identities.append(f"key:{hashlib.sha256(api_key.encode()).hexdigest()}")
+        redis_keys = [
+            f"rate-limit:v1:{hashlib.sha256(identity.encode()).hexdigest()}"
+            for identity in identities
+        ]
+        redis_client = getattr(application.state, "redis_client", None)
+        if redis_client is None:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "rate limit service is unavailable"},
+            )
+        try:
+            count, retry_after = await redis_client.eval(
+                _RATE_LIMIT_SCRIPT,
+                len(redis_keys),
+                *redis_keys,
+                app_settings.rate_limit_requests,
+                app_settings.rate_limit_window_seconds,
+            )
+        except RedisError:
+            logger.exception("rate_limit_service_failed")
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "rate limit service is unavailable"},
+            )
+        if int(count) > app_settings.rate_limit_requests:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "request rate limit exceeded"},
+                headers={
+                    "Retry-After": str(max(1, int(retry_after))),
+                    "X-RateLimit-Limit": str(app_settings.rate_limit_requests),
+                    "X-RateLimit-Remaining": "0",
+                },
+            )
+        response = await call_next(request)
+        response.headers["X-RateLimit-Limit"] = str(app_settings.rate_limit_requests)
+        response.headers["X-RateLimit-Remaining"] = str(
+            max(0, app_settings.rate_limit_requests - int(count))
+        )
+        return response
 
     @application.middleware("http")
     async def audit_api_writes(request, call_next):
