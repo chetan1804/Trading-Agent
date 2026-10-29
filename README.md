@@ -17,6 +17,16 @@ make run
 
 The API listens at <http://localhost:8001>. Interactive API documentation is at <http://localhost:8001/docs>.
 
+Run the read-only React operations dashboard in a second terminal:
+
+```sh
+cd frontend
+npm install
+npm run dev
+```
+
+It opens at <http://localhost:5173> and reads `GET /api/dashboard/overview` from `http://localhost:8001` by default. Set `VITE_API_URL` to the API origin when the backend is hosted elsewhere. The dashboard refreshes every 30 seconds and displays the portfolio and execution snapshot; performance figures appear when supplied by a completed performance report. It does not submit or fill orders.
+
 Start PostgreSQL and Redis before running the API. The complete stack, including automatic database migrations, starts with `docker compose up --build`. Compose uses local-only development credentials by default; override them with environment variables for non-local use. For a separately started API, apply schema changes with `make migrate` before `make run`.
 
 ## Checks
