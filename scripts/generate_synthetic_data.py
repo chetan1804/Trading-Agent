@@ -6,7 +6,7 @@ from trading.data.synthetic import generate_synthetic_ohlcv
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate explicitly synthetic OHLCV data.")
-    parser.add_argument("--symbol", default="DEMO")
+    parser.add_argument("--symbol", default="RELIANCE.NS")
     parser.add_argument("--periods", type=int, default=500)
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--frequency", default="1h")

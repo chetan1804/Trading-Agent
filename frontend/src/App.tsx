@@ -23,9 +23,9 @@ type DashboardPayload = {
 };
 
 const API_URL = `${import.meta.env.VITE_API_URL ?? "http://localhost:8001"}/api/dashboard/overview`;
-const money = new Intl.NumberFormat("en-US", {
+const money = new Intl.NumberFormat("en-IN", {
   style: "currency",
-  currency: "USD",
+  currency: "INR",
   maximumFractionDigits: 2,
 });
 
@@ -87,7 +87,7 @@ function App() {
       <section className="content" id="overview">
         <header className="topbar">
           <div>
-            <p className="eyebrow">Workspace / Overview</p>
+            <p className="eyebrow">Indian markets / Overview</p>
             <h1>Operations</h1>
           </div>
           <div className="topbar-actions">
@@ -100,7 +100,7 @@ function App() {
 
         <div className="snapshot-line">
           <span>Account snapshot</span>
-          <span>{updatedAt ? `Updated ${updatedAt.toLocaleTimeString()}` : "Waiting for API"}</span>
+          <span>{updatedAt ? `Updated ${updatedAt.toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" })} IST` : "Waiting for API"}</span>
         </div>
 
         {error && (

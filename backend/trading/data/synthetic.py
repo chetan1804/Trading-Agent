@@ -5,7 +5,7 @@ import pandas as pd
 
 
 def generate_synthetic_ohlcv(
-    symbol: str = "DEMO",
+    symbol: str = "RELIANCE.NS",
     periods: int = 500,
     start: datetime | None = None,
     frequency: str = "1h",

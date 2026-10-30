@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api", tags=["strategies"])
 
 
 class StrategyRunRequest(BaseModel):
-    symbol: str = Field(default="DEMO", min_length=1, max_length=32)
+    symbol: str = Field(default="RELIANCE.NS", min_length=1, max_length=32)
     stop_loss_fraction: float = Field(default=0.02, gt=0, lt=1)
 
 
@@ -45,7 +45,7 @@ async def _get_decision(request: Request, decision_id: str) -> dict[str, object]
 @router.get("/strategies/generate")
 async def generate_strategy_signals(
     request: Request,
-    symbol: str = "DEMO",
+    symbol: str = "RELIANCE.NS",
     limit: int = Query(default=20, ge=1, le=200),
 ) -> dict[str, object]:
     store = getattr(request.app.state, "market_data_store", {})

@@ -60,7 +60,7 @@ router = APIRouter(prefix="/api", tags=["market-data"])
 
 
 @router.get("/market-data/quote")
-async def market_data_quote(request: Request, symbol: str = "DEMO") -> dict[str, object]:
+async def market_data_quote(request: Request, symbol: str = "RELIANCE.NS") -> dict[str, object]:
     symbol_upper = symbol.upper()
     store = getattr(request.app.state, "market_data_store", {})
     stored_bars = store.get(symbol_upper, [])
@@ -83,7 +83,7 @@ async def market_data_quote(request: Request, symbol: str = "DEMO") -> dict[str,
 @router.get("/market-data/history")
 async def market_data_history(
     request: Request,
-    symbol: str = "DEMO",
+    symbol: str = "RELIANCE.NS",
     limit: int = Query(default=20, ge=1, le=500),
 ) -> dict[str, object]:
     symbol_upper = symbol.upper()
@@ -114,7 +114,7 @@ async def market_data_history(
 
 @router.get("/market-data/news")
 async def market_data_news(
-    symbol: str = "DEMO",
+    symbol: str = "RELIANCE.NS",
     limit: int = Query(default=5, ge=1, le=10),
 ) -> dict[str, object]:
     items = _headline_batch(symbol=symbol, limit=limit)
@@ -128,7 +128,7 @@ async def market_data_news(
 @router.get("/market-data/validate")
 async def market_data_validate(
     request: Request,
-    symbol: str = "DEMO",
+    symbol: str = "RELIANCE.NS",
     limit: int = Query(default=20, ge=1, le=500),
 ) -> dict[str, object]:
     store = getattr(request.app.state, "market_data_store", {})
@@ -247,7 +247,7 @@ async def market_data_ingest(
 @router.get("/market-data/stored")
 async def market_data_stored(
     request: Request,
-    symbol: str = "DEMO",
+    symbol: str = "RELIANCE.NS",
     limit: int = Query(default=50, ge=1, le=500),
 ) -> dict[str, object]:
     store = getattr(request.app.state, "market_data_store", {})

@@ -1,6 +1,6 @@
 # AI Automated Trading Platform
 
-A modular trading research platform. Development starts in paper mode; live trading is not implemented.
+A modular research and paper-trading platform focused on Indian markets. Monetary values are denominated in Indian rupees (INR), and dashboard timestamps use India Standard Time. Development starts in paper mode; live trading is not implemented.
 
 ## Requirements
 
@@ -25,7 +25,7 @@ npm install
 npm run dev
 ```
 
-It opens at <http://localhost:5173> and reads `GET /api/dashboard/overview` from `http://localhost:8001` by default. Set `VITE_API_URL` to the API origin when the backend is hosted elsewhere. The dashboard refreshes every 30 seconds and displays the portfolio and execution snapshot; performance figures appear when supplied by a completed performance report. It does not submit or fill orders.
+It opens at <http://localhost:5173> and reads `GET /api/dashboard/overview` from `http://localhost:8001` by default. Set `VITE_API_URL` to the API origin when the backend is hosted elsewhere. The dashboard displays currency in INR and times in IST, refreshes every 30 seconds, and shows the portfolio and execution snapshot; performance figures appear when supplied by a completed performance report. It does not submit or fill orders.
 
 Start PostgreSQL and Redis before running the API. The complete stack, including the API, PostgreSQL, Redis, and production-built dashboard, starts with `docker compose up --build`. The dashboard is available at <http://localhost:5173> and the API at <http://localhost:8001>. Set `VITE_API_URL` to the browser-reachable API origin when deploying elsewhere; it is embedded into the frontend at image build time. Set `FRONTEND_PORT` and `API_PORT` to change the local published ports. Compose uses local-only development credentials by default; override them with environment variables for non-local use. For a separately started API, apply schema changes with `make migrate` before `make run`.
 
@@ -46,7 +46,7 @@ For a hosted deployment, provide a managed PostgreSQL database and Redis service
 
 ## Market data
 
-Generate a reproducible synthetic OHLCV CSV with `uv run python scripts/generate_synthetic_data.py`. CSV data uses `timestamp,symbol,open,high,low,close,volume`; run it through `trading.data.validation.validate_ohlcv` before research. Validation reports problems and normalizes timestamps/order, but does not drop rows or repair prices.
+Generate a reproducible synthetic OHLCV CSV with `uv run python scripts/generate_synthetic_data.py`. The default sample symbol is `RELIANCE.NS` (NSE); use `.NS` for NSE listings and `.BO` for BSE listings when supplying symbols. Synthetic prices are illustrative and are not actual Indian market data. CSV data uses `timestamp,symbol,open,high,low,close,volume`; run it through `trading.data.validation.validate_ohlcv` before research. Validation reports problems and normalizes timestamps/order, but does not drop rows or repair prices.
 
 Generate causal, per-symbol features with:
 
@@ -99,7 +99,7 @@ The baseline `POST /api/ml/train` endpoint supports Logistic Regression (default
 
 ## Strategy decisions and paper orders
 
-After ingesting OHLCV data, run the latest moving-average signal through risk checks with `POST /api/strategies/run` using `{"symbol":"DEMO","stop_loss_fraction":0.02}`. The API records the signal, risk result, and any staged paper order in PostgreSQL (`strategy_decisions` migration). A BUY is rejected while `ENABLE_TRADING=false`; an approved signal creates an unfilled paper order. Review decisions with `GET /api/strategies/decisions`. Filling remains a separate explicit call to `POST /api/paper-trading/orders/{id}/fill`; this strategy endpoint never fills orders automatically. Re-running the same strategy on the same symbol and bar is idempotent and returns the existing decision.
+After ingesting Indian-market OHLCV data, run the latest moving-average signal through risk checks with `POST /api/strategies/run` using `{"symbol":"RELIANCE.NS","stop_loss_fraction":0.02}`. The API records the signal, risk result, and any staged paper order in PostgreSQL (`strategy_decisions` migration). A BUY is rejected while `ENABLE_TRADING=false`; an approved signal creates an unfilled paper order. Review decisions with `GET /api/strategies/decisions`. Filling remains a separate explicit call to `POST /api/paper-trading/orders/{id}/fill`; this strategy endpoint never fills orders automatically. Re-running the same strategy on the same symbol and bar is idempotent and returns the existing decision.
 
 ## Risk controls
 
@@ -113,7 +113,7 @@ from trading.risk.manager import AccountRiskState, RiskManager, TradeProposal
 
 risk = RiskManager(enabled=get_settings().enable_trading)
 proposal = TradeProposal(
-    symbol="DEMO",
+    symbol="RELIANCE.NS",
     side="BUY",
     entry_price=100,
     stop_loss_price=95,

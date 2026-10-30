@@ -27,7 +27,7 @@ def _finite_metrics(metrics: dict[str, float | int]) -> dict[str, float | int | 
 @router.get("/backtests/run")
 async def run_backtest(
     request: Request,
-    symbol: str = "DEMO",
+    symbol: str = "RELIANCE.NS",
     limit: int = Query(default=60, ge=20, le=300),
     initial_cash: float = Query(default=100000.0, gt=0),
 ) -> dict[str, object]:
@@ -107,7 +107,7 @@ async def run_backtest(
 @router.get("/backtests/walk-forward")
 async def walk_forward_backtest(
     request: Request,
-    symbol: str = "DEMO",
+    symbol: str = "RELIANCE.NS",
     limit: int = Query(default=1000, ge=3, le=10000),
     training_window: int = Query(default=252, ge=1),
     validation_window: int = Query(default=63, ge=1),

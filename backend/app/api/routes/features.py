@@ -9,7 +9,7 @@ router = APIRouter(prefix="/api", tags=["features"])
 @router.get("/features/engineer")
 async def engineer_feature_snapshot(
     request: Request,
-    symbol: str = "DEMO",
+    symbol: str = "RELIANCE.NS",
     limit: int = Query(default=20, ge=1, le=200),
 ) -> dict[str, object]:
     store = getattr(request.app.state, "market_data_store", {})
