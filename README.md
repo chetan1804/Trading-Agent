@@ -27,7 +27,7 @@ npm run dev
 
 It opens at <http://localhost:5173> and reads `GET /api/dashboard/overview` from `http://localhost:8001` by default. Set `VITE_API_URL` to the API origin when the backend is hosted elsewhere. The dashboard refreshes every 30 seconds and displays the portfolio and execution snapshot; performance figures appear when supplied by a completed performance report. It does not submit or fill orders.
 
-Start PostgreSQL and Redis before running the API. The complete stack, including automatic database migrations, starts with `docker compose up --build`. Compose uses local-only development credentials by default; override them with environment variables for non-local use. For a separately started API, apply schema changes with `make migrate` before `make run`.
+Start PostgreSQL and Redis before running the API. The complete stack, including the API, PostgreSQL, Redis, and production-built dashboard, starts with `docker compose up --build`. The dashboard is available at <http://localhost:5173> and the API at <http://localhost:8001>. Set `VITE_API_URL` to the browser-reachable API origin when deploying elsewhere; it is embedded into the frontend at image build time. Set `FRONTEND_PORT` and `API_PORT` to change the local published ports. Compose uses local-only development credentials by default; override them with environment variables for non-local use. For a separately started API, apply schema changes with `make migrate` before `make run`.
 
 ## Checks
 
@@ -37,6 +37,12 @@ make lint
 ```
 
 `GET /health` checks API liveness. `GET /health/ready` checks PostgreSQL and Redis and returns 503 when either dependency is unavailable.
+
+## Deployment
+
+The backend and dashboard use separate containers. The backend image is built from the repository root, runs as the configured Uvicorn service, and has no live broker adapter. The dashboard is built as static assets and served by Nginx with SPA fallback and a container health endpoint. Compose waits for PostgreSQL/Redis and backend readiness before starting dependent services. CI runs tests and lint/format checks, then builds both container images; tagged releases publish the backend image to GitHub Container Registry.
+
+For a hosted deployment, provide a managed PostgreSQL database and Redis service, set `APP_ENV=production`, enable API authentication with a unique `API_KEY` of at least 32 characters, and configure `CORS_ALLOWED_ORIGINS` for the dashboard origin. Set `VITE_API_URL` to the public HTTPS API origin before building the frontend image. Keep `ENABLE_TRADING=false`; the application has no live broker integration. Never use Compose's local fallback database credentials on a public host.
 
 ## Market data
 

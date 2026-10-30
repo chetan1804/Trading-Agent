@@ -51,6 +51,12 @@ jobs:
       - name: Lint Python code
         run: uv run ruff check .
 
+      - name: Check Python formatting
+        run: uv run ruff format --check .
+
+      - name: Build backend container
+        run: docker build --tag trading-agent-backend:ci .
+
   frontend:
     runs-on: ubuntu-latest
     steps:
@@ -69,3 +75,6 @@ jobs:
 
       - name: Build frontend
         run: cd frontend && npm run build
+
+      - name: Build frontend container
+        run: docker build --tag trading-agent-frontend:ci frontend
