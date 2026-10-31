@@ -1,91 +1,74 @@
 from __future__ import annotations
 
-from collections.abc import Iterable
-
-import pandas as pd
+from sklearn.metrics import accuracy_score, precision_score, recall_score
 
 
 class ModelMonitor:
-    def evaluate(self, baseline: pd.DataFrame, live: pd.DataFrame) -> dict[str, object]:
-        feature_columns = [col for col in baseline.columns if col != "label"]
-        if not feature_columns:
-            raise ValueError("baseline must include feature columns")
+    minimum_observations = 20
 
-        drift: dict[str, float] = {}
-        for feature in feature_columns:
-            baseline_mean = float(baseline[feature].mean())
-            live_mean = float(live[feature].mean())
-            drift[feature] = abs(live_mean - baseline_mean) / max(abs(baseline_mean), 1e-9)
+    def evaluate_observations(
+        self,
+        baseline_means: dict[str, float],
+        observations: list[dict[str, object]],
+    ) -> dict[str, object]:
+        if not observations:
+            return {
+                "status": "unavailable",
+                "reason": "No prediction observations have been recorded.",
+                "observation_count": 0,
+                "labeled_count": 0,
+                "feature_drift": None,
+                "accuracy": None,
+                "precision": None,
+                "recall": None,
+            }
 
-        predictions = self._predict(live)
-        labels = live["label"].astype(int).tolist()
-        accuracy = self._accuracy(labels, predictions)
-        precision = self._precision(labels, predictions)
-        recall = self._recall(labels, predictions)
-
-        if max(drift.values(), default=0.0) > 0.25 or accuracy < 0.6:
-            status = "critical"
-        elif max(drift.values(), default=0.0) > 0.1 or accuracy < 0.75:
-            status = "warning"
+        if len(observations) < self.minimum_observations:
+            status = "collecting"
         else:
             status = "healthy"
 
-        return {
-            "feature_drift": drift,
-            "accuracy": accuracy,
-            "precision": precision,
-            "recall": recall,
-            "status": status,
+        feature_drift: dict[str, float] = {}
+        features = [row["features"] for row in observations]
+        for feature, baseline_mean in baseline_means.items():
+            live_values = [float(row[feature]) for row in features if feature in row]
+            if live_values:
+                live_mean = sum(live_values) / len(live_values)
+                feature_drift[feature] = abs(live_mean - baseline_mean) / max(
+                    abs(baseline_mean), 1e-9
+                )
+
+        max_drift = max(feature_drift.values(), default=0.0)
+        if len(observations) >= self.minimum_observations:
+            if max_drift > 0.25:
+                status = "critical"
+            elif max_drift > 0.1:
+                status = "warning"
+
+        labeled = [row for row in observations if row["actual_label"] is not None]
+        metrics: dict[str, float | None] = {
+            "accuracy": None,
+            "precision": None,
+            "recall": None,
         }
+        if labeled:
+            actual = [int(row["actual_label"]) for row in labeled]
+            predicted = [int(row["prediction"]) for row in labeled]
+            metrics = {
+                "accuracy": float(accuracy_score(actual, predicted)),
+                "precision": float(precision_score(actual, predicted, zero_division=0)),
+                "recall": float(recall_score(actual, predicted, zero_division=0)),
+            }
+            if len(labeled) >= self.minimum_observations:
+                if metrics["accuracy"] < 0.6:
+                    status = "critical"
+                elif metrics["accuracy"] < 0.75 and status == "healthy":
+                    status = "warning"
 
-    def _predict(self, frame: pd.DataFrame) -> list[int]:
-        feature_columns = [col for col in frame.columns if col != "label"]
-        predictions: list[int] = []
-        for _, row in frame.iterrows():
-            score = sum(float(row[col]) for col in feature_columns)
-            predictions.append(1 if score >= 0 else 0)
-        return predictions
-
-    @staticmethod
-    def _accuracy(labels: Iterable[int], predictions: Iterable[int]) -> float:
-        labels_list = list(labels)
-        prediction_list = list(predictions)
-        if not labels_list:
-            return 0.0
-        matches = sum(
-            int(label == prediction)
-            for label, prediction in zip(labels_list, prediction_list, strict=False)
-        )
-        return matches / len(labels_list)
-
-    @staticmethod
-    def _precision(labels: Iterable[int], predictions: Iterable[int]) -> float:
-        labels_list = list(labels)
-        prediction_list = list(predictions)
-        if not prediction_list:
-            return 0.0
-        positives = sum(int(pred == 1) for pred in prediction_list)
-        if positives == 0:
-            return 0.0
-        return (
-            sum(
-                int(label == 1 and pred == 1)
-                for label, pred in zip(labels_list, prediction_list, strict=False)
-            )
-            / positives
-        )
-
-    @staticmethod
-    def _recall(labels: Iterable[int], predictions: Iterable[int]) -> float:
-        labels_list = list(labels)
-        prediction_list = list(predictions)
-        actual_positives = sum(int(label == 1) for label in labels_list)
-        if actual_positives == 0:
-            return 0.0
-        return (
-            sum(
-                int(label == 1 and pred == 1)
-                for label, pred in zip(labels_list, prediction_list, strict=False)
-            )
-            / actual_positives
-        )
+        return {
+            "status": status,
+            "observation_count": len(observations),
+            "labeled_count": len(labeled),
+            "feature_drift": feature_drift or None,
+            **metrics,
+        }

@@ -22,6 +22,10 @@ class MLPredictRequest(BaseModel):
     features: dict[str, float]
 
 
+class MLOutcomeRequest(BaseModel):
+    actual_label: int = Field(ge=0, le=1)
+
+
 @router.post("/ml/train")
 async def train_ml(
     request: MLTrainRequest,
@@ -67,7 +71,36 @@ async def predict_ml(
         )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    return {"model_version": model_version, "prediction": prediction}
+    async with http_request.app.state.database_session_factory() as session:
+        prediction_id = await ModelRegistryRepository(session).record_prediction(
+            model_version=model_version,
+            features=request.features,
+            prediction=prediction,
+        )
+    return {
+        "model_version": model_version,
+        "prediction": prediction,
+        "prediction_id": prediction_id,
+    }
+
+
+@router.post("/models/predictions/{prediction_id}/outcome")
+async def record_prediction_outcome(
+    prediction_id: str,
+    request: MLOutcomeRequest,
+    http_request: Request,
+    _auth: None = Depends(require_api_key),
+) -> dict[str, object]:
+    async with http_request.app.state.database_session_factory() as session:
+        recorded = await ModelRegistryRepository(session).record_outcome(
+            prediction_id,
+            request.actual_label,
+        )
+    if recorded is None:
+        raise HTTPException(status_code=404, detail="prediction observation not found")
+    if not recorded:
+        raise HTTPException(status_code=409, detail="prediction outcome was already recorded")
+    return {"prediction_id": prediction_id, "actual_label": request.actual_label}
 
 
 @router.post("/models/{model_version}/promote")
@@ -113,4 +146,14 @@ async def predict_active_ml(request: MLPredictRequest, http_request: Request) ->
         )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    return {"model_version": model.model_version, "prediction": prediction}
+    async with http_request.app.state.database_session_factory() as session:
+        prediction_id = await ModelRegistryRepository(session).record_prediction(
+            model_version=model.model_version,
+            features=request.features,
+            prediction=prediction,
+        )
+    return {
+        "model_version": model.model_version,
+        "prediction": prediction,
+        "prediction_id": prediction_id,
+    }

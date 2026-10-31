@@ -16,4 +16,4 @@ def test_monitoring_overview_endpoint_returns_execution_and_model_status() -> No
     assert "alerts" in payload
     assert payload["model"]["status"] == "unavailable"
     assert payload["model"]["accuracy"] is None
-    assert "not being collected" in payload["model"]["reason"]
+    assert "observations" in payload["model"]["reason"]

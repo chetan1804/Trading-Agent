@@ -166,6 +166,9 @@ class SignalModelTrainer:
                 "validation": int(len(y_validation)),
                 "test": int(len(y_test)),
             },
+            "feature_baseline": {
+                name: float(np.mean(x_train[:, index])) for index, name in enumerate(feature_names)
+            },
             "classes": classifier.classes_.tolist(),
         }
         return summary, pickle.dumps(model, protocol=pickle.HIGHEST_PROTOCOL)

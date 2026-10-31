@@ -104,7 +104,20 @@ class RegisteredModel(Base):
     metrics: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False)
     validation_metrics: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False)
     split_rows: Mapped[dict[str, int]] = mapped_column(JSON, nullable=False)
+    feature_baseline: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False, default=dict)
     artifact: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+
+
+class ModelPredictionRecord(Base):
+    __tablename__ = "model_predictions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    model_version: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    features: Mapped[dict[str, float]] = mapped_column(JSON, nullable=False)
+    prediction: Mapped[int] = mapped_column(Integer, nullable=False)
+    actual_label: Mapped[int | None] = mapped_column(Integer)
+    predicted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    outcome_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ActiveModelRecord(Base):
