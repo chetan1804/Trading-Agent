@@ -39,7 +39,7 @@ class MarketResearchAssistant:
 
         summary_parts = [
             f"{symbol.upper()} is showing {momentum} momentum with a {direction} bias.",
-            f"The latest price is ${price:,.2f} on volume of {volume:,.0f}.",
+            f"The latest price is INR {price:,.2f} on volume of {volume:,.0f}.",
         ]
         if news_items:
             summary_parts.append(f"News flow supports: {news_items[0]}")
@@ -63,7 +63,7 @@ class MarketResearchAssistant:
             )
 
         highlights = [
-            f"Price: ${price:,.2f}",
+            f"Price: INR {price:,.2f}",
             f"Change: {change_pct:+.2f}%",
             f"Volume: {volume:,.0f}",
         ]

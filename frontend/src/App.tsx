@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 
 type DashboardPayload = {
   status: string;
@@ -22,7 +22,16 @@ type DashboardPayload = {
   };
 };
 
-const API_URL = `${import.meta.env.VITE_API_URL ?? "http://localhost:8001"}/api/dashboard/overview`;
+type ResearchReport = {
+  symbol: string;
+  provider: string;
+  summary: string;
+  risks: string[];
+  highlights: string[];
+};
+
+const API_ORIGIN = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
+const API_URL = `${API_ORIGIN}/api/dashboard/overview`;
 const money = new Intl.NumberFormat("en-IN", {
   style: "currency",
   currency: "INR",
@@ -38,6 +47,44 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [loading, setLoading] = useState(true);
+  const [researchSymbol, setResearchSymbol] = useState("RELIANCE.NS");
+  const [researchPrice, setResearchPrice] = useState("");
+  const [researchChange, setResearchChange] = useState("");
+  const [researchVolume, setResearchVolume] = useState("");
+  const [researchNews, setResearchNews] = useState("");
+  const [researchDocuments, setResearchDocuments] = useState("");
+  const [research, setResearch] = useState<ResearchReport | null>(null);
+  const [researchError, setResearchError] = useState<string | null>(null);
+  const [researchLoading, setResearchLoading] = useState(false);
+
+  const runResearch = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setResearchLoading(true);
+    setResearchError(null);
+    try {
+      const response = await fetch(`${API_ORIGIN}/api/ai/research`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol: researchSymbol.trim(),
+          market_snapshot: {
+            ...(researchPrice ? { price: Number(researchPrice) } : {}),
+            ...(researchChange ? { change_pct: Number(researchChange) } : {}),
+            ...(researchVolume ? { volume: Number(researchVolume) } : {}),
+          },
+          news: researchNews.split("\n").map((item) => item.trim()).filter(Boolean),
+          documents: researchDocuments.split("\n").map((item) => item.trim()).filter(Boolean),
+        }),
+      });
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
+      setResearch((await response.json()) as ResearchReport);
+    } catch (fetchError) {
+      setResearchError(fetchError instanceof Error ? fetchError.message : "Research request failed");
+      setResearch(null);
+    } finally {
+      setResearchLoading(false);
+    }
+  };
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -77,6 +124,7 @@ function App() {
           <a className="nav-link active" href="#overview"><span>◫</span> Overview</a>
           <a className="nav-link" href="#portfolio"><span>▤</span> Portfolio</a>
           <a className="nav-link" href="#execution"><span>⇄</span> Execution</a>
+          <a className="nav-link" href="#research"><span>⌕</span> AI Research</a>
         </nav>
         <div className="sidebar-note">
           <span className="status-dot" /> Paper environment
@@ -144,6 +192,33 @@ function App() {
           <div><strong>{performance.sharpe_ratio == null ? "—" : performance.sharpe_ratio.toFixed(2)}</strong><small>Sharpe ratio</small></div>
           <div><strong>{formatMoney(performance.final_equity)}</strong><small>Reported final equity</small></div>
           <p>Performance metrics are populated by completed backtests; they do not predict future results.</p>
+        </section>
+        <section className="research-section" id="research">
+          <div className="section-heading"><div><p className="eyebrow">Structured inputs only</p><h2>Market research</h2></div><span className="readonly-tag">NON-TRADING</span></div>
+          <div className="research-grid">
+            <form className="panel research-form" onSubmit={runResearch}>
+              <p className="research-disclaimer">Provide the market snapshot and source text to summarize. This local assistant does not fetch market data or place trades.</p>
+              <label>Symbol<input required value={researchSymbol} onChange={(event) => setResearchSymbol(event.target.value)} /></label>
+              <div className="research-numbers">
+                <label>Price (INR)<input type="number" min="0" step="any" value={researchPrice} onChange={(event) => setResearchPrice(event.target.value)} /></label>
+                <label>Change (%)<input type="number" step="any" value={researchChange} onChange={(event) => setResearchChange(event.target.value)} /></label>
+                <label>Volume<input type="number" min="0" step="any" value={researchVolume} onChange={(event) => setResearchVolume(event.target.value)} /></label>
+              </div>
+              <label>Headlines<textarea rows={3} value={researchNews} onChange={(event) => setResearchNews(event.target.value)} placeholder="One headline per line" /></label>
+              <label>Research documents<textarea rows={3} value={researchDocuments} onChange={(event) => setResearchDocuments(event.target.value)} placeholder="One source excerpt per line" /></label>
+              {researchError && <p className="research-error" role="alert">Research unavailable: {researchError}</p>}
+              <button className="refresh-button research-submit" type="submit" disabled={researchLoading}>{researchLoading ? "Preparing summary…" : "Generate summary"}</button>
+            </form>
+            <article className="panel research-result" aria-live="polite">
+              <div className="panel-heading"><div><h3>{research ? `${research.symbol} research brief` : "Research brief"}</h3><p>Generated from the inputs supplied</p></div>{research && <span className="count-badge">{research.provider}</span>}</div>
+              {research ? <>
+                <p className="research-summary">{research.summary}</p>
+                <h4>Highlights</h4><ul>{research.highlights.map((item) => <li key={item}>{item}</li>)}</ul>
+                <h4>Risks and uncertainty</h4><ul>{research.risks.map((item) => <li key={item}>{item}</li>)}</ul>
+              </> : <EmptyState>Enter a symbol and optional context to create a research brief.</EmptyState>}
+              <p className="research-footnote">Rule-based local interpretation of user-provided data, not an LLM response. Verify source facts independently; this is not a trading instruction.</p>
+            </article>
+          </div>
         </section>
         <footer>Research and paper-trading workspace <span>•</span> No live orders are enabled</footer>
       </section>
