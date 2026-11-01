@@ -29,6 +29,8 @@ It opens at <http://localhost:5173> and reads `GET /api/dashboard/overview` from
 
 The **AI Research** section accepts a symbol, optional market snapshot, headlines, and document excerpts, then calls `POST /api/ai/research`. The current assistant creates a deterministic local summary from the supplied inputs; it does not fetch external data or call an LLM. Prices in the brief are labeled INR. The result is informational and cannot place orders.
 
+`POST /api/ai/rag` accepts a query and a list of trusted document excerpts. Its lexical retrieval response includes source IDs (`document-1`, etc.), excerpt text, and relevance scores; answer text cites the IDs used. If no supplied excerpt matches query terms, it returns `no_relevant_sources` without presenting an unrelated excerpt as an answer. This is lightweight keyword retrieval, not an embedding model or an LLM, so review the cited source text directly.
+
 Start PostgreSQL and Redis before running the API. The complete stack, including the API, PostgreSQL, Redis, and production-built dashboard, starts with `docker compose up --build`. The dashboard is available at <http://localhost:5173> and the API at <http://localhost:8001>. Set `VITE_API_URL` to the browser-reachable API origin when deploying elsewhere; it is embedded into the frontend at image build time. Set `FRONTEND_PORT` and `API_PORT` to change the local published ports. Compose uses local-only development credentials by default; override them with environment variables for non-local use. For a separately started API, apply schema changes with `make migrate` before `make run`.
 
 ## Checks
