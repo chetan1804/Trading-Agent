@@ -30,6 +30,17 @@ type ResearchReport = {
   highlights: string[];
 };
 
+type AgentReport = {
+  symbol: string;
+  status: string;
+  objective: string;
+  plan: string[];
+  actions: string[];
+  sentiment: { sentiment: string; score: number; headline_count: number };
+  research_context: { answer: string; citations: string[]; sources: { source_id: string; excerpt: string; relevance_score: number }[] };
+  risks_and_uncertainties: string[];
+};
+
 const API_ORIGIN = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const API_URL = `${API_ORIGIN}/api/dashboard/overview`;
 const money = new Intl.NumberFormat("en-IN", {
@@ -56,6 +67,41 @@ function App() {
   const [research, setResearch] = useState<ResearchReport | null>(null);
   const [researchError, setResearchError] = useState<string | null>(null);
   const [researchLoading, setResearchLoading] = useState(false);
+  const [agentObjective, setAgentObjective] = useState("Assess the recent market context and summarize key risks.");
+  const [agentReport, setAgentReport] = useState<AgentReport | null>(null);
+  const [agentError, setAgentError] = useState<string | null>(null);
+  const [agentLoading, setAgentLoading] = useState(false);
+
+  const agentPayload = () => ({
+    symbol: researchSymbol.trim(),
+    objective: agentObjective.trim(),
+    market_snapshot: {
+      ...(researchPrice ? { price: Number(researchPrice) } : {}),
+      ...(researchChange ? { change_pct: Number(researchChange) } : {}),
+      ...(researchVolume ? { volume: Number(researchVolume) } : {}),
+    },
+    news: researchNews.split("\n").map((item) => item.trim()).filter(Boolean),
+    documents: researchDocuments.split("\n").map((item) => item.trim()).filter(Boolean),
+  });
+
+  const runAgent = async () => {
+    setAgentLoading(true);
+    setAgentError(null);
+    try {
+      const response = await fetch(`${API_ORIGIN}/api/agents/run`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(agentPayload()),
+      });
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
+      setAgentReport((await response.json()) as AgentReport);
+    } catch (fetchError) {
+      setAgentError(fetchError instanceof Error ? fetchError.message : "Agent request failed");
+      setAgentReport(null);
+    } finally {
+      setAgentLoading(false);
+    }
+  };
 
   const runResearch = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -206,8 +252,11 @@ function App() {
               </div>
               <label>Headlines<textarea rows={3} value={researchNews} onChange={(event) => setResearchNews(event.target.value)} placeholder="One headline per line" /></label>
               <label>Research documents<textarea rows={3} value={researchDocuments} onChange={(event) => setResearchDocuments(event.target.value)} placeholder="One source excerpt per line" /></label>
+              <label>Research question<textarea rows={2} value={agentObjective} onChange={(event) => setAgentObjective(event.target.value)} /></label>
               {researchError && <p className="research-error" role="alert">Research unavailable: {researchError}</p>}
               <button className="refresh-button research-submit" type="submit" disabled={researchLoading}>{researchLoading ? "Preparing summary…" : "Generate summary"}</button>
+              {agentError && <p className="research-error" role="alert">Agent unavailable: {agentError}</p>}
+              <button className="refresh-button research-submit" type="button" onClick={() => void runAgent()} disabled={agentLoading || !researchSymbol.trim() || !agentObjective.trim()}>{agentLoading ? "Reviewing inputs…" : "Run research agent"}</button>
             </form>
             <article className="panel research-result" aria-live="polite">
               <div className="panel-heading"><div><h3>{research ? `${research.symbol} research brief` : "Research brief"}</h3><p>Generated from the inputs supplied</p></div>{research && <span className="count-badge">{research.provider}</span>}</div>
@@ -219,6 +268,14 @@ function App() {
               <p className="research-footnote">Rule-based local interpretation of user-provided data, not an LLM response. Verify source facts independently; this is not a trading instruction.</p>
             </article>
           </div>
+          <article className="panel agent-result" aria-live="polite">
+            <div className="panel-heading"><div><h3>{agentReport ? `${agentReport.symbol} research workflow` : "Research agent"}</h3><p>Deterministic workflow using only the inputs above</p></div>{agentReport && <span className="count-badge">{agentReport.sentiment.sentiment} sentiment</span>}</div>
+            {agentReport ? <div className="agent-result-grid">
+              <section><h4>Review plan</h4><ul>{agentReport.plan.map((item) => <li key={item}>{item}</li>)}</ul><h4>Checks</h4><ul>{agentReport.actions.map((item) => <li key={item}>{item}</li>)}</ul></section>
+              <section><h4>Retrieved research</h4>{agentReport.research_context.sources.length ? <ul>{agentReport.research_context.sources.map((source) => <li key={source.source_id}><strong>[{source.source_id}]</strong> {source.excerpt}</li>)}</ul> : <p className="research-muted">{agentReport.research_context.answer}</p>}<h4>Risks and data gaps</h4><ul>{agentReport.risks_and_uncertainties.map((item) => <li key={item}>{item}</li>)}</ul></section>
+            </div> : <EmptyState>Ask a question above to run the research workflow.</EmptyState>}
+            <p className="research-footnote">This workflow does not fetch or verify data, call an LLM, or approve or submit an order.</p>
+          </article>
         </section>
         <footer>Research and paper-trading workspace <span>•</span> No live orders are enabled</footer>
       </section>
