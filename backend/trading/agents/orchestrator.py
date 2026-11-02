@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from trading.ai.rag import RAGResearchAssistant
 from trading.ai.sentiment import SentimentAnalyzer
 
 
@@ -16,6 +17,7 @@ class MarketAgent:
         objective: str,
         market_snapshot: dict[str, Any] | None = None,
         news: list[str] | None = None,
+        documents: list[str] | None = None,
     ) -> dict[str, Any]:
         snapshot = market_snapshot or {}
         price = float(snapshot.get("price", 0.0) or 0.0)
@@ -48,6 +50,17 @@ class MarketAgent:
             actions.append("request additional market context")
 
         sentiment = SentimentAnalyzer().analyze(news or [])
+        research_context = RAGResearchAssistant().answer(
+            query=objective,
+            documents=documents or [],
+        )
+        data_gaps = []
+        if not snapshot:
+            data_gaps.append("No market snapshot was supplied.")
+        if not news:
+            data_gaps.append("No headlines were supplied; news sentiment is unavailable.")
+        if not research_context["sources"]:
+            data_gaps.append("No relevant research-document excerpts were found.")
 
         return {
             "symbol": symbol.upper(),
@@ -62,6 +75,12 @@ class MarketAgent:
                 "headline_count": sentiment["headline_count"],
                 "signals": sentiment["signals"],
             },
+            "research_context": research_context,
+            "risks_and_uncertainties": data_gaps
+            + [
+                "This review uses only request inputs and does not validate their accuracy or freshness.",
+                "This analysis is informational and does not approve or submit an order.",
+            ],
             "signal": {
                 "trend": trend,
                 "price": price,

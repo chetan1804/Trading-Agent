@@ -10,6 +10,7 @@ class AgentRunRequest(BaseModel):
     objective: str = Field(..., min_length=1)
     market_snapshot: dict[str, object] = Field(default_factory=dict)
     news: list[str] = Field(default_factory=list)
+    documents: list[str] = Field(default_factory=list)
 
 
 @router.post("/agents/run")
@@ -20,5 +21,6 @@ async def run_agent(request: AgentRunRequest) -> dict[str, object]:
         objective=request.objective,
         market_snapshot=request.market_snapshot,
         news=request.news,
+        documents=request.documents,
     )
     return result
