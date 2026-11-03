@@ -41,6 +41,20 @@ type AgentReport = {
   risks_and_uncertainties: string[];
 };
 
+type MonitoringPayload = {
+  status: string;
+  alerts: string[];
+  model?: {
+    status?: string;
+    reason?: string;
+    model_version?: string;
+    observation_count?: number;
+    labeled_count?: number;
+    accuracy?: number | null;
+    feature_drift?: Record<string, number> | null;
+  };
+};
+
 const API_ORIGIN = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const API_URL = `${API_ORIGIN}/api/dashboard/overview`;
 const money = new Intl.NumberFormat("en-IN", {
@@ -71,6 +85,8 @@ function App() {
   const [agentReport, setAgentReport] = useState<AgentReport | null>(null);
   const [agentError, setAgentError] = useState<string | null>(null);
   const [agentLoading, setAgentLoading] = useState(false);
+  const [monitoring, setMonitoring] = useState<MonitoringPayload | null>(null);
+  const [monitoringError, setMonitoringError] = useState<string | null>(null);
 
   const agentPayload = () => ({
     symbol: researchSymbol.trim(),
@@ -144,6 +160,14 @@ function App() {
       setError(fetchError instanceof Error ? fetchError.message : "Request failed");
     } finally {
       setLoading(false);
+    }
+    try {
+      const response = await fetch(`${API_ORIGIN}/api/monitoring/overview`);
+      if (!response.ok) throw new Error(`API returned ${response.status}`);
+      setMonitoring((await response.json()) as MonitoringPayload);
+      setMonitoringError(null);
+    } catch (fetchError) {
+      setMonitoringError(fetchError instanceof Error ? fetchError.message : "Request failed");
     }
   }, []);
 
@@ -238,6 +262,20 @@ function App() {
           <div><strong>{performance.sharpe_ratio == null ? "—" : performance.sharpe_ratio.toFixed(2)}</strong><small>Sharpe ratio</small></div>
           <div><strong>{formatMoney(performance.final_equity)}</strong><small>Reported final equity</small></div>
           <p>Performance metrics are populated by completed backtests; they do not predict future results.</p>
+        </section>
+        <section className="monitoring-panel panel" aria-live="polite">
+          <div className="panel-heading"><div><p className="eyebrow">Observability</p><h3>Model monitoring & alerts</h3></div><span className={`monitoring-status ${monitoring?.model?.status ?? "unavailable"}`}>{monitoring?.model?.status ?? "unavailable"}</span></div>
+          {monitoringError ? <p className="research-error">Monitoring data unavailable: {monitoringError}</p> : <>
+            <div className="monitoring-metrics">
+              <div><span>Model version</span><strong>{monitoring?.model?.model_version ?? "—"}</strong></div>
+              <div><span>Predictions observed</span><strong>{monitoring?.model?.observation_count ?? 0}</strong></div>
+              <div><span>Outcomes labeled</span><strong>{monitoring?.model?.labeled_count ?? 0}</strong></div>
+              <div><span>Observed accuracy</span><strong>{monitoring?.model?.accuracy == null ? "—" : `${(monitoring.model.accuracy * 100).toFixed(1)}%`}</strong></div>
+            </div>
+            <p className="research-muted">{monitoring?.model?.reason ?? "Metrics use recorded prediction outcomes; collection status reflects available observations."}</p>
+            <h4>Active alerts</h4>
+            {monitoring?.alerts.length ? <ul>{monitoring.alerts.map((alert) => <li key={alert}>{alert}</li>)}</ul> : <p className="research-muted">No monitoring response yet.</p>}
+          </>}
         </section>
         <section className="research-section" id="research">
           <div className="section-heading"><div><p className="eyebrow">Structured inputs only</p><h2>Market research</h2></div><span className="readonly-tag">NON-TRADING</span></div>
