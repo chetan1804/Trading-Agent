@@ -25,7 +25,7 @@ npm install
 npm run dev
 ```
 
-It opens at <http://localhost:5173> and reads dashboard and monitoring snapshots from `http://localhost:8001` by default. Set `VITE_API_URL` to the API origin when the backend is hosted elsewhere. The dashboard displays currency in INR and times in IST, refreshes every 30 seconds, and shows the portfolio, execution, model monitoring, and alert snapshots; performance figures appear when supplied by a completed performance report. It does not submit or fill orders.
+It opens at <http://localhost:5173> and reads dashboard and monitoring snapshots from `http://localhost:8001` by default. Set `VITE_API_URL` to the API origin when the backend is hosted elsewhere. The dashboard displays currency in INR and times in IST, refreshes every 30 seconds, and shows portfolio, execution, pre-trade risk limits, model monitoring, and alert snapshots; performance figures appear when supplied by a completed performance report. It does not submit or fill orders.
 
 The **AI Research** section accepts a symbol, optional market snapshot, headlines, and document excerpts, then calls `POST /api/ai/research`. The current assistant creates a deterministic local summary from the supplied inputs; it does not fetch external data or call an LLM. Prices in the brief are labeled INR. The result is informational and cannot place orders.
 
@@ -112,6 +112,8 @@ After ingesting Indian-market OHLCV data, run the latest moving-average signal t
 ## Risk controls
 
 New exposure is disabled by default with `ENABLE_TRADING=false`. Configure risk limits with `RISK_PER_TRADE`, `MAX_POSITION_FRACTION`, `MAX_PORTFOLIO_EXPOSURE_FRACTION`, `MAX_OPEN_POSITIONS`, `MAX_DAILY_LOSS_FRACTION`, `MAX_DRAWDOWN_FRACTION`, and `SYMBOL_COOLDOWN_SECONDS`; fractions must be greater than zero and at most one. Before a buy, the risk manager requires a stop price and caps size by stop-distance risk, available cash, per-position notional, total exposure, daily loss, drawdown, open positions, and the symbol cooldown. A sell can only reduce an existing long position, even while the kill switch is off:
+
+The dashboard risk summary reports the kill-switch state and current exposure, drawdown, open positions, and daily realized P&amp;L against their configured pre-trade limits. Daily loss currently tracks realized paper-broker P&amp;L; it is distinct from the portfolio's net realized-plus-unrealized P&amp;L.
 
 ```python
 from datetime import UTC, datetime

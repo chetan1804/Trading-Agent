@@ -50,6 +50,57 @@ class RiskManager:
         self.enabled = enabled
         logger.warning("trading_kill_switch enabled=%s", enabled)
 
+    def status_snapshot(self, account: AccountRiskState) -> dict[str, object]:
+        """Summarize current account limits for read-only status views."""
+        equity = account.equity
+        peak_equity = account.peak_equity if account.peak_equity is not None else equity
+        daily_loss_limit = equity * self.limits.max_daily_loss_fraction
+        exposure_limit = equity * self.limits.max_portfolio_exposure_fraction
+        drawdown_fraction = (
+            max(0.0, (peak_equity - equity) / peak_equity) if peak_equity > 0 else 0.0
+        )
+        daily_loss_fraction = max(0.0, -account.daily_pnl) / equity if equity > 0 else 0.0
+        exposure_fraction = account.current_exposure / equity if equity > 0 else 0.0
+        open_positions = sum(quantity > 0 for quantity in account.positions.values())
+
+        reasons = []
+        if equity <= 0:
+            reasons.append("equity must be positive")
+        if account.available_cash <= 0:
+            reasons.append("available cash must be positive")
+        if equity > 0 and account.daily_pnl <= -daily_loss_limit:
+            reasons.append("maximum daily loss reached")
+        if drawdown_fraction >= self.limits.max_drawdown_fraction:
+            reasons.append("maximum drawdown reached")
+        if equity > 0 and account.current_exposure >= exposure_limit:
+            reasons.append("maximum portfolio exposure reached")
+        if open_positions >= self.limits.max_open_positions:
+            reasons.append("maximum open positions reached")
+
+        if not self.enabled:
+            status = "disabled"
+        elif reasons:
+            status = "blocked"
+        else:
+            status = "clear"
+
+        return {
+            "status": status,
+            "new_exposure_allowed": self.enabled and not reasons,
+            "daily_pnl": account.daily_pnl,
+            "daily_pnl_basis": "realized",
+            "daily_loss_fraction": daily_loss_fraction,
+            "max_daily_loss_fraction": self.limits.max_daily_loss_fraction,
+            "drawdown_fraction": drawdown_fraction,
+            "max_drawdown_fraction": self.limits.max_drawdown_fraction,
+            "exposure": account.current_exposure,
+            "exposure_fraction": exposure_fraction,
+            "max_portfolio_exposure_fraction": self.limits.max_portfolio_exposure_fraction,
+            "open_positions": open_positions,
+            "max_open_positions": self.limits.max_open_positions,
+            "reasons": reasons,
+        }
+
     def evaluate(self, proposal: TradeProposal, account: AccountRiskState) -> RiskDecision:
         if not proposal.symbol.strip():
             return self._reject("symbol is required")

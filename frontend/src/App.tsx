@@ -20,6 +20,22 @@ type DashboardPayload = {
     stale_orders?: number;
     avg_fill_slippage_bps?: Record<string, number>;
   };
+  risk?: {
+    status: string;
+    new_exposure_allowed: boolean;
+    daily_pnl: number;
+    daily_pnl_basis: string;
+    daily_loss_fraction: number;
+    max_daily_loss_fraction: number;
+    drawdown_fraction: number;
+    max_drawdown_fraction: number;
+    exposure: number;
+    exposure_fraction: number;
+    max_portfolio_exposure_fraction: number;
+    open_positions: number;
+    max_open_positions: number;
+    reasons: string[];
+  };
 };
 
 type ResearchReport = {
@@ -180,6 +196,7 @@ function App() {
   const portfolio = data?.portfolio;
   const performance = data?.performance ?? {};
   const execution = data?.execution ?? {};
+  const risk = data?.risk;
   const positions = Object.entries(portfolio?.positions ?? {});
   const prices = portfolio?.last_prices ?? {};
 
@@ -262,6 +279,21 @@ function App() {
           <div><strong>{performance.sharpe_ratio == null ? "—" : performance.sharpe_ratio.toFixed(2)}</strong><small>Sharpe ratio</small></div>
           <div><strong>{formatMoney(performance.final_equity)}</strong><small>Reported final equity</small></div>
           <p>Performance metrics are populated by completed backtests; they do not predict future results.</p>
+        </section>
+        <section className="risk-panel panel" aria-live="polite">
+          <div className="panel-heading"><div><p className="eyebrow">Exposure controls</p><h3>Risk status</h3></div><span className={`monitoring-status ${risk?.status ?? "unavailable"}`}>{risk?.status ?? "unavailable"}</span></div>
+          {risk ? <>
+            <div className="risk-summary-line"><strong>{risk.new_exposure_allowed ? "New exposure is enabled" : "New exposure is blocked"}</strong><span>{risk.new_exposure_allowed ? "All reported checks are within limits" : risk.status === "disabled" ? "Trading kill switch is off" : "One or more risk limits are reached"}</span></div>
+            <div className="monitoring-metrics">
+              <div><span>Daily realized P&amp;L</span><strong className={risk.daily_pnl >= 0 ? "positive-text" : "negative-text"}>{formatMoney(risk.daily_pnl)}</strong></div>
+              <div><span>Daily loss limit used</span><strong>{(risk.daily_loss_fraction * 100).toFixed(1)}% / {(risk.max_daily_loss_fraction * 100).toFixed(1)}%</strong></div>
+              <div><span>Drawdown</span><strong>{(risk.drawdown_fraction * 100).toFixed(1)}% / {(risk.max_drawdown_fraction * 100).toFixed(1)}%</strong></div>
+              <div><span>Exposure</span><strong>{formatMoney(risk.exposure)} · {(risk.exposure_fraction * 100).toFixed(1)}% / {(risk.max_portfolio_exposure_fraction * 100).toFixed(1)}%</strong></div>
+              <div><span>Open positions</span><strong>{risk.open_positions} / {risk.max_open_positions}</strong></div>
+            </div>
+            {risk.reasons.length > 0 && <ul className="risk-reasons">{risk.reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul>}
+            <p className="research-muted">Daily loss uses realized P&amp;L recorded by the paper broker. This panel reports configured pre-trade limits; it does not predict portfolio losses.</p>
+          </> : <p className="research-muted">Risk status is unavailable.</p>}
         </section>
         <section className="monitoring-panel panel" aria-live="polite">
           <div className="panel-heading"><div><p className="eyebrow">Observability</p><h3>Model monitoring & alerts</h3></div><span className={`monitoring-status ${monitoring?.model?.status ?? "unavailable"}`}>{monitoring?.model?.status ?? "unavailable"}</span></div>

@@ -23,8 +23,12 @@ async def dashboard_overview(request: Request) -> dict[str, object]:
         {"total_return": total_return},
         final_equity=broker.equity,
     )
-    return DashboardSummary(
+    summary = DashboardSummary(
         portfolio=portfolio,
         performance=performance,
         execution=ExecutionMonitor(broker).snapshot(),
     ).snapshot()
+    risk_manager = getattr(request.app.state, "risk_manager", None)
+    if risk_manager is not None:
+        summary["risk"] = risk_manager.status_snapshot(broker.risk_account())
+    return summary
