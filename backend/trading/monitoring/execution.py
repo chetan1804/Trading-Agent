@@ -41,6 +41,23 @@ class ExecutionMonitor:
             avg_fill_slippage_bps[symbol] = sum(values) / len(values) if values else 0.0
 
         stale_orders = sum(1 for order in orders if self._health_for(order)["status"] == "stale")
+        recent_fills = [
+            {
+                "order_id": order.id,
+                "symbol": order.symbol,
+                "side": order.side,
+                "status": order.status.value,
+                "filled_quantity": order.filled_quantity,
+                "avg_fill_price": order.avg_fill_price,
+                "order_submitted_at": self._utc_timestamp(order.created_at),
+            }
+            for order in sorted(
+                orders,
+                key=lambda item: self._sort_timestamp(item.created_at),
+                reverse=True,
+            )
+            if order.filled_quantity > 0 and order.avg_fill_price is not None
+        ][:10]
 
         return {
             "open_orders": open_orders,
@@ -49,7 +66,18 @@ class ExecutionMonitor:
             "avg_fill_slippage_bps": avg_fill_slippage_bps,
             "order_health": order_health,
             "stale_orders": stale_orders,
+            "recent_fills": recent_fills,
         }
+
+    @staticmethod
+    def _sort_timestamp(timestamp: datetime) -> datetime:
+        if timestamp.tzinfo is None:
+            return timestamp.replace(tzinfo=UTC)
+        return timestamp.astimezone(UTC)
+
+    @classmethod
+    def _utc_timestamp(cls, timestamp: datetime) -> str:
+        return cls._sort_timestamp(timestamp).isoformat()
 
     def _health_for(self, order: Order) -> dict[str, object]:
         now = datetime.now(UTC)

@@ -19,6 +19,15 @@ type DashboardPayload = {
     filled_orders?: number;
     stale_orders?: number;
     avg_fill_slippage_bps?: Record<string, number>;
+    recent_fills?: {
+      order_id: string;
+      symbol: string;
+      side: string;
+      status: string;
+      filled_quantity: number;
+      avg_fill_price: number;
+      order_submitted_at: string;
+    }[];
   };
   risk?: {
     status: string;
@@ -273,6 +282,13 @@ function App() {
             <div className="panel-footer">Orders require explicit risk approval and a separate fill action.</div>
           </article>
         </section>
+
+        <article className="panel recent-fills-panel">
+          <div className="panel-heading"><div><h3>Recent paper fills</h3><p>Order submission time shown in IST</p></div><span className="count-badge">{execution.recent_fills?.length ?? 0}</span></div>
+          {execution.recent_fills?.length ? <div className="table-wrap"><table><thead><tr><th>Submitted</th><th>Symbol</th><th>Side</th><th>Status</th><th>Filled qty</th><th>Average fill</th></tr></thead><tbody>
+            {execution.recent_fills.map((fill) => <tr key={fill.order_id}><td>{new Date(fill.order_submitted_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}</td><td className="symbol">{fill.symbol}</td><td>{fill.side}</td><td>{fill.status}</td><td>{fill.filled_quantity.toLocaleString("en-IN")}</td><td>{formatMoney(fill.avg_fill_price)}</td></tr>)}
+          </tbody></table></div> : <EmptyState>No paper fills have been recorded.</EmptyState>}
+        </article>
 
         <section className="performance-strip">
           <div><span className="eyebrow">Latest performance report</span><strong>{performance.total_return == null ? "—" : `${(performance.total_return * 100).toFixed(2)}%`}</strong><small>Total return</small></div>
