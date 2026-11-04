@@ -80,6 +80,19 @@ type MonitoringPayload = {
   };
 };
 
+type BacktestPayload = {
+  symbol: string;
+  strategy_id: string;
+  data_source: string;
+  initial_cash: number;
+  ending_equity: number;
+  trade_count: number;
+  metrics: Record<string, number | null>;
+  comparison: Record<string, Record<string, number | null>>;
+  equity_curve: { timestamp: string; equity: number; drawdown: number }[];
+  trades: { entry_time: string; exit_time: string; quantity: number; entry_price: number; exit_price: number; pnl: number; holding_bars: number }[];
+};
+
 const API_ORIGIN = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const API_URL = `${API_ORIGIN}/api/dashboard/overview`;
 const money = new Intl.NumberFormat("en-IN", {
@@ -112,6 +125,48 @@ function App() {
   const [agentLoading, setAgentLoading] = useState(false);
   const [monitoring, setMonitoring] = useState<MonitoringPayload | null>(null);
   const [monitoringError, setMonitoringError] = useState<string | null>(null);
+  const [backtestSymbol, setBacktestSymbol] = useState("RELIANCE.NS");
+  const [backtestStrategy, setBacktestStrategy] = useState("moving_average");
+  const [backtestBars, setBacktestBars] = useState("120");
+  const [backtestCapital, setBacktestCapital] = useState("100000");
+  const [backtestCommission, setBacktestCommission] = useState("0.001");
+  const [backtestSlippage, setBacktestSlippage] = useState("5");
+  const [backtestSpread, setBacktestSpread] = useState("2");
+  const [backtestStart, setBacktestStart] = useState("");
+  const [backtestEnd, setBacktestEnd] = useState("");
+  const [backtest, setBacktest] = useState<BacktestPayload | null>(null);
+  const [backtestError, setBacktestError] = useState<string | null>(null);
+  const [backtestLoading, setBacktestLoading] = useState(false);
+
+  const runBacktest = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBacktestLoading(true);
+    setBacktestError(null);
+    const params = new URLSearchParams({
+      symbol: backtestSymbol.trim(),
+      strategy_id: backtestStrategy,
+      limit: backtestBars,
+      initial_cash: backtestCapital,
+      commission_rate: backtestCommission,
+      slippage_bps: backtestSlippage,
+      spread_bps: backtestSpread,
+    });
+    if (backtestStart) params.set("start_date", backtestStart);
+    if (backtestEnd) params.set("end_date", backtestEnd);
+    try {
+      const response = await fetch(`${API_ORIGIN}/api/backtests/run?${params.toString()}`);
+      if (!response.ok) {
+        const detail = (await response.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(detail.detail ?? `API returned ${response.status}`);
+      }
+      setBacktest((await response.json()) as BacktestPayload);
+    } catch (fetchError) {
+      setBacktestError(fetchError instanceof Error ? fetchError.message : "Backtest request failed");
+      setBacktest(null);
+    } finally {
+      setBacktestLoading(false);
+    }
+  };
 
   const agentPayload = () => ({
     symbol: researchSymbol.trim(),
@@ -220,6 +275,7 @@ function App() {
           <a className="nav-link active" href="#overview"><span>◫</span> Overview</a>
           <a className="nav-link" href="#portfolio"><span>▤</span> Portfolio</a>
           <a className="nav-link" href="#execution"><span>⇄</span> Execution</a>
+          <a className="nav-link" href="#backtesting"><span>⌁</span> Backtesting</a>
           <a className="nav-link" href="#research"><span>⌕</span> AI Research</a>
         </nav>
         <div className="sidebar-note">
@@ -325,6 +381,33 @@ function App() {
             {monitoring?.alerts.length ? <ul>{monitoring.alerts.map((alert) => <li key={alert}>{alert}</li>)}</ul> : <p className="research-muted">No monitoring response yet.</p>}
           </>}
         </section>
+        <section className="backtesting-section" id="backtesting">
+          <div className="section-heading"><div><p className="eyebrow">Historical simulation</p><h2>Backtesting</h2></div><span className="readonly-tag">RESEARCH ONLY</span></div>
+          <div className="backtest-layout">
+            <form className="panel backtest-form" onSubmit={runBacktest}>
+              <label>Symbol<input required value={backtestSymbol} onChange={(event) => setBacktestSymbol(event.target.value)} /></label>
+              <label>Strategy<select value={backtestStrategy} onChange={(event) => setBacktestStrategy(event.target.value)}><option value="moving_average">Moving average crossover</option><option value="buy_and_hold">Buy and hold</option></select></label>
+              <div className="backtest-dates"><label>Start date<input type="date" value={backtestStart} onChange={(event) => setBacktestStart(event.target.value)} /></label><label>End date<input type="date" value={backtestEnd} onChange={(event) => setBacktestEnd(event.target.value)} /></label></div>
+              <label>Bars to include (20–300)<input type="number" min="20" max="300" required value={backtestBars} onChange={(event) => setBacktestBars(event.target.value)} /></label>
+              <label>Initial capital (INR)<input type="number" min="1" step="any" required value={backtestCapital} onChange={(event) => setBacktestCapital(event.target.value)} /></label>
+              <div className="backtest-costs"><label>Commission rate<input type="number" min="0" max="0.999999" step="any" value={backtestCommission} onChange={(event) => setBacktestCommission(event.target.value)} /></label><label>Slippage (bps)<input type="number" min="0" step="any" value={backtestSlippage} onChange={(event) => setBacktestSlippage(event.target.value)} /></label><label>Spread (bps)<input type="number" min="0" step="any" value={backtestSpread} onChange={(event) => setBacktestSpread(event.target.value)} /></label></div>
+              {backtestError && <p className="research-error" role="alert">Backtest unavailable: {backtestError}</p>}
+              <button className="refresh-button research-submit" type="submit" disabled={backtestLoading}>{backtestLoading ? "Running backtest…" : "Run backtest"}</button>
+            </form>
+            <article className="panel backtest-output" aria-live="polite">
+              <div className="panel-heading"><div><h3>{backtest ? `${backtest.symbol} results` : "Backtest results"}</h3><p>{backtest ? `${backtest.strategy_id.replace(/_/g, " ")} · ${backtest.data_source} data` : "Configure a run to see performance"}</p></div>{backtest && <span className="count-badge">{backtest.trade_count} trades</span>}</div>
+              {backtest ? <>
+                {backtest.data_source === "synthetic" && <p className="research-disclaimer">Synthetic sample data is illustrative and does not represent actual market performance.</p>}
+                <div className="backtest-metrics"><BacktestMetric label="Total return" value={`${((backtest.metrics.total_return ?? 0) * 100).toFixed(2)}%`} /><BacktestMetric label="Sharpe ratio" value={(backtest.metrics.sharpe_ratio ?? 0).toFixed(2)} /><BacktestMetric label="Max drawdown" value={`${((backtest.metrics.max_drawdown ?? 0) * 100).toFixed(2)}%`} /><BacktestMetric label="Ending equity" value={formatMoney(backtest.ending_equity)} /></div>
+                <div className="backtest-comparison"><span>Strategy comparison using the same window and costs</span><strong>Moving average {( (backtest.comparison.moving_average?.total_return ?? 0) * 100).toFixed(2)}%</strong><strong>Buy &amp; hold {( (backtest.comparison.buy_and_hold?.total_return ?? 0) * 100).toFixed(2)}%</strong></div>
+                <div className="equity-chart"><svg viewBox="0 0 760 180" role="img" aria-label="Backtest equity curve"><polyline points={equityPolyline(backtest.equity_curve)} fill="none" stroke="#62d6a0" strokeWidth="2.5" vectorEffect="non-scaling-stroke" /></svg><div><span>Equity curve</span><span>{backtest.equity_curve.length} observations</span></div></div>
+                <h4>Closed trades</h4>
+                {backtest.trades.length ? <div className="table-wrap"><table><thead><tr><th>Entry</th><th>Exit</th><th>Qty</th><th>Entry price</th><th>Exit price</th><th>P&amp;L</th></tr></thead><tbody>{backtest.trades.slice().reverse().slice(0, 20).map((trade) => <tr key={`${trade.entry_time}-${trade.exit_time}`}><td>{new Date(trade.entry_time).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}</td><td>{new Date(trade.exit_time).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}</td><td>{trade.quantity.toLocaleString("en-IN", { maximumFractionDigits: 3 })}</td><td>{formatMoney(trade.entry_price)}</td><td>{formatMoney(trade.exit_price)}</td><td className={trade.pnl >= 0 ? "positive-text" : "negative-text"}>{formatMoney(trade.pnl)}</td></tr>)}</tbody></table></div> : <p className="research-muted">No closed trades in this window.</p>}
+              </> : <EmptyState>Run a historical simulation to see metrics, equity, and trade history.</EmptyState>}
+              <p className="research-footnote">Backtest fills use next-bar opens and include the configured commission, slippage, and spread assumptions. Historical results do not predict future returns.</p>
+            </article>
+          </div>
+        </section>
         <section className="research-section" id="research">
           <div className="section-heading"><div><p className="eyebrow">Structured inputs only</p><h2>Market research</h2></div><span className="readonly-tag">NON-TRADING</span></div>
           <div className="research-grid">
@@ -375,6 +458,22 @@ function Metric({ label, value, note, tone }: { label: string; value: string; no
 
 function EmptyState({ children }: { children: ReactNode }) {
   return <div className="empty-state"><span aria-hidden="true">◌</span><p>{children}</p></div>;
+}
+
+function BacktestMetric({ label, value }: { label: string; value: string }) {
+  return <div><span>{label}</span><strong>{value}</strong></div>;
+}
+
+function equityPolyline(points: BacktestPayload["equity_curve"]) {
+  if (points.length < 2) return "";
+  const values = points.map((point) => point.equity);
+  const min = Math.min(...values);
+  const range = Math.max(...values) - min || 1;
+  return values.map((value, index) => {
+    const x = (index / (values.length - 1)) * 740 + 10;
+    const y = 160 - ((value - min) / range) * 140;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
 }
 
 export default App;

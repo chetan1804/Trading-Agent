@@ -1,7 +1,10 @@
 import math
+from datetime import date, timedelta
+from typing import Literal
 
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query, Request
+from trading.backtesting.costs import TransactionCosts
 from trading.backtesting.engine import BacktestConfig, BacktestEngine
 from trading.backtesting.metrics import (
     calculate_monthly_returns,
@@ -28,9 +31,17 @@ def _finite_metrics(metrics: dict[str, float | int]) -> dict[str, float | int | 
 async def run_backtest(
     request: Request,
     symbol: str = "RELIANCE.NS",
+    strategy_id: Literal["moving_average", "buy_and_hold"] = "moving_average",
     limit: int = Query(default=60, ge=20, le=300),
     initial_cash: float = Query(default=100000.0, gt=0),
+    commission_rate: float = Query(default=0.001, ge=0, lt=1),
+    slippage_bps: float = Query(default=5.0, ge=0),
+    spread_bps: float = Query(default=2.0, ge=0),
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> dict[str, object]:
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="start_date must be on or before end_date")
     symbol_upper = symbol.upper()
     store = getattr(request.app.state, "market_data_store", {})
     stored_bars = store.get(symbol_upper, [])
@@ -49,23 +60,49 @@ async def run_backtest(
         data_source = "synthetic"
 
     feature_frame = engineer_features(market_data)
+    timestamps = pd.to_datetime(feature_frame["timestamp"], utc=True)
+    if start_date:
+        feature_frame = feature_frame.loc[
+            timestamps >= pd.Timestamp(start_date, tz="UTC")
+        ]
+        timestamps = pd.to_datetime(feature_frame["timestamp"], utc=True)
+    if end_date:
+        end_exclusive = pd.Timestamp(end_date + timedelta(days=1), tz="UTC")
+        feature_frame = feature_frame.loc[timestamps < end_exclusive]
     run_data = feature_frame.tail(limit).reset_index(drop=True)
-    strategy = MovingAverageCrossoverStrategy(fast_window=20, slow_window=50)
-    engine = BacktestEngine(BacktestConfig(initial_cash=initial_cash))
-    result = engine.run(run_data, strategy)
+    if run_data.empty:
+        raise HTTPException(status_code=422, detail="no market bars fall within the selected range")
+
+    costs = TransactionCosts(
+        commission_rate=commission_rate,
+        slippage_bps=slippage_bps,
+        spread_bps=spread_bps,
+    )
+    engine = BacktestEngine(BacktestConfig(initial_cash=initial_cash, costs=costs))
+    moving_average_result = engine.run(
+        run_data,
+        MovingAverageCrossoverStrategy(fast_window=20, slow_window=50),
+    )
+    buy_and_hold_result = engine.run(run_data, BuyAndHoldStrategy())
+    result = moving_average_result if strategy_id == "moving_average" else buy_and_hold_result
     metrics = calculate_performance_metrics(
         result.equity_curve, result.trades, turnover_value=result.turnover
     )
-    benchmark = engine.run(run_data, BuyAndHoldStrategy())
-    benchmark_metrics = calculate_performance_metrics(
-        benchmark.equity_curve,
-        benchmark.trades,
-        turnover_value=benchmark.turnover,
+    moving_average_metrics = calculate_performance_metrics(
+        moving_average_result.equity_curve,
+        moving_average_result.trades,
+        turnover_value=moving_average_result.turnover,
+    )
+    buy_and_hold_metrics = calculate_performance_metrics(
+        buy_and_hold_result.equity_curve,
+        buy_and_hold_result.trades,
+        turnover_value=buy_and_hold_result.turnover,
     )
 
     normalized_metrics = _finite_metrics(metrics)
     return {
         "symbol": symbol_upper,
+        "strategy_id": strategy_id,
         "data_source": data_source,
         "initial_cash": float(result.initial_cash),
         "ending_cash": float(result.ending_cash),
@@ -98,8 +135,8 @@ async def run_backtest(
             for row in result.equity_curve.itertuples(index=False)
         ],
         "comparison": {
-            "moving_average": normalized_metrics,
-            "buy_and_hold": _finite_metrics(benchmark_metrics),
+            "moving_average": _finite_metrics(moving_average_metrics),
+            "buy_and_hold": _finite_metrics(buy_and_hold_metrics),
         },
     }
 

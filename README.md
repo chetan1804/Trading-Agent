@@ -115,6 +115,8 @@ New exposure is disabled by default with `ENABLE_TRADING=false`. Configure risk 
 
 The dashboard risk summary reports the kill-switch state and current exposure, drawdown, open positions, and daily realized P&amp;L against their configured pre-trade limits. Daily loss currently tracks realized paper-broker P&amp;L; it is distinct from the portfolio's net realized-plus-unrealized P&amp;L.
 
+The dashboard **Backtesting** section runs the moving-average crossover or buy-and-hold strategy through `GET /api/backtests/run`. It accepts a symbol, optional inclusive date range, bar limit, starting capital, commission rate, slippage, and spread. Ingested bars are preferred; otherwise, results are labeled synthetic. The report shows an equity curve, headline metrics, and up to 20 recent closed trades beside the API's strategy comparison. The simulator remains single-symbol and long-only.
+
 ```python
 from datetime import UTC, datetime
 
