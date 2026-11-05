@@ -7,6 +7,7 @@ from app.main import create_app
 from fastapi.testclient import TestClient
 from trading.backtesting.costs import TransactionCosts
 from trading.backtesting.engine import BacktestConfig, BacktestEngine
+from trading.ml.targets import next_period_direction
 from trading.ml.trainer import SignalModelTrainer
 from trading.strategies.ml_strategy import MLProbabilityStrategy
 
@@ -95,3 +96,11 @@ def test_ml_probability_strategy_rejects_invalid_thresholds() -> None:
             buy_threshold=0.4,
             sell_threshold=0.6,
         )
+
+
+def test_next_period_direction_leaves_final_target_unknown() -> None:
+    labels = next_period_direction(pd.Series([100.0, 101.0, 99.0]))
+
+    assert labels.iloc[0] == 1
+    assert labels.iloc[1] == 0
+    assert pd.isna(labels.iloc[2])

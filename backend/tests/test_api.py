@@ -185,6 +185,31 @@ def test_backtesting_api_endpoints_work() -> None:
     assert "total_return" in payload["metrics"]
 
 
+def test_ml_walk_forward_backtest_fits_only_before_test_windows() -> None:
+    app = create_app(Settings(app_env="test", enable_trading=False))
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/backtests/walk-forward",
+        params={
+            "symbol": "DEMO",
+            "limit": 120,
+            "training_window": 60,
+            "validation_window": 20,
+            "test_window": 20,
+            "step_size": 20,
+            "strategy_id": "ml_probability",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["strategy_id"] == "ml_probability"
+    assert payload["model_type"] == "logistic_regression"
+    assert payload["fold_count"] == 2
+    assert all("metrics" in fold for fold in payload["folds"])
+
+
 def test_risk_api_evaluation_endpoints_work() -> None:
     app = create_app(Settings(enable_trading=False))
     client = TestClient(app)

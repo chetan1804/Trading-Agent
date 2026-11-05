@@ -14,7 +14,10 @@ from trading.backtesting.metrics import (
 from trading.backtesting.walk_forward import WalkForwardConfig, run_walk_forward
 from trading.data.synthetic import generate_synthetic_ohlcv
 from trading.features.feature_pipeline import engineer_features
+from trading.ml.targets import next_period_direction
+from trading.ml.trainer import SignalModelTrainer
 from trading.strategies.buy_hold import BuyAndHoldStrategy
+from trading.strategies.ml_strategy import MLProbabilityStrategy
 from trading.strategies.moving_average import MovingAverageCrossoverStrategy
 
 router = APIRouter(prefix="/api", tags=["backtests"])
@@ -151,6 +154,10 @@ async def walk_forward_backtest(
     test_window: int = Query(default=63, ge=1),
     step_size: int = Query(default=63, ge=1),
     initial_cash: float = Query(default=100000.0, gt=0),
+    strategy_id: Literal["moving_average", "ml_probability"] = "moving_average",
+    model_type: Literal["logistic_regression", "random_forest"] = "logistic_regression",
+    buy_threshold: float = Query(default=0.65, gt=0, le=1),
+    sell_threshold: float = Query(default=0.35, ge=0, lt=1),
 ) -> dict[str, object]:
     symbol_upper = symbol.upper()
     store = getattr(request.app.state, "market_data_store", {})
@@ -174,10 +181,54 @@ async def walk_forward_backtest(
         test_window=test_window,
         step_size=step_size,
     )
+    if strategy_id == "ml_probability" and sell_threshold >= buy_threshold:
+        raise HTTPException(
+            status_code=422,
+            detail="sell_threshold must be less than buy_threshold",
+        )
+
+    def build_strategy(training: pd.DataFrame, validation: pd.DataFrame):
+        if strategy_id == "moving_average":
+            return MovingAverageCrossoverStrategy()
+
+        # The final training label uses the first validation close. At the end
+        # of validation, that outcome is known; no test rows enter model fitting.
+        available = pd.concat([training, validation], ignore_index=True)
+        training_frame = training.reset_index(drop=True)
+        labels = (
+            next_period_direction(available["close"])
+            .iloc[: len(training)]
+            .reset_index(drop=True)
+        )
+        feature_names = [
+            column
+            for column in training_frame.select_dtypes(include="number").columns
+            if column not in {"open", "high", "low", "close", "volume"}
+        ]
+        usable = labels.notna()
+        for column in feature_names:
+            usable &= training_frame[column].notna() & training_frame[column].map(math.isfinite)
+        fit_rows = training_frame.loc[usable]
+        fit_labels = labels.loc[usable].astype(int)
+        artifact = SignalModelTrainer().fit_artifact(
+            features={
+                column: fit_rows[column].astype(float).tolist() for column in feature_names
+            },
+            labels=fit_labels.tolist(),
+            model_type=model_type,
+        )
+        return MLProbabilityStrategy(
+            artifact=artifact,
+            feature_names=tuple(feature_names),
+            buy_threshold=buy_threshold,
+            sell_threshold=sell_threshold,
+            model_version=f"walk-forward-{model_type}",
+        )
+
     try:
         result = run_walk_forward(
             featured_data,
-            lambda _training, _validation: MovingAverageCrossoverStrategy(),
+            build_strategy,
             config=config,
             backtest_config=BacktestConfig(initial_cash=initial_cash),
         )
@@ -187,6 +238,8 @@ async def walk_forward_backtest(
     return {
         "symbol": result.symbol,
         "data_source": data_source,
+        "strategy_id": strategy_id,
+        "model_type": model_type if strategy_id == "ml_probability" else None,
         "fold_count": len(result.folds),
         "folds": [
             {

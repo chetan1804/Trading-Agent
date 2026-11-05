@@ -16,6 +16,50 @@ from sklearn.preprocessing import StandardScaler
 
 
 class SignalModelTrainer:
+    def fit_artifact(
+        self,
+        *,
+        features: dict[str, Sequence[float]],
+        labels: Sequence[int],
+        model_type: Literal["logistic_regression", "random_forest"] = "logistic_regression",
+    ) -> bytes:
+        """Fit on exactly the supplied chronological training rows, without a held-out split."""
+        if not features:
+            raise ValueError("features must not be empty")
+        if not labels:
+            raise ValueError("labels must not be empty")
+        feature_names = list(features)
+        rows = len(next(iter(features.values())))
+        if any(len(values) != rows for values in features.values()) or len(labels) != rows:
+            raise ValueError("all feature columns and labels must have the same length")
+        x = np.column_stack([np.asarray(features[name], dtype=float) for name in feature_names])
+        if not np.isfinite(x).all():
+            raise ValueError("features must contain only finite values")
+        raw_labels = np.asarray(labels)
+        if not np.isin(raw_labels, [0, 1]).all():
+            raise ValueError("labels must be binary values 0 or 1")
+        y = raw_labels.astype(int)
+        if np.unique(y).size < 2:
+            raise ValueError("training labels must contain both binary classes")
+
+        if model_type == "logistic_regression":
+            classifier = LogisticRegression(max_iter=1000, random_state=42)
+            scaler: StandardScaler | str = StandardScaler()
+        elif model_type == "random_forest":
+            classifier = RandomForestClassifier(
+                n_estimators=200,
+                max_depth=8,
+                min_samples_leaf=2,
+                random_state=42,
+                n_jobs=1,
+            )
+            scaler = "passthrough"
+        else:
+            raise ValueError("model_type must be logistic_regression or random_forest")
+        model = Pipeline([("scaler", scaler), ("classifier", classifier)])
+        model.fit(x, y)
+        return pickle.dumps(model, protocol=pickle.HIGHEST_PROTOCOL)
+
     def train(
         self,
         *,
