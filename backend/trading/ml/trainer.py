@@ -175,11 +175,37 @@ class SignalModelTrainer:
 
     @staticmethod
     def predict(artifact: bytes, *, feature_names: list[str], features: dict[str, float]) -> int:
+        model = SignalModelTrainer._load_model(
+            artifact, feature_names=feature_names, features=features
+        )
+        return int(model.predict(SignalModelTrainer._feature_row(feature_names, features))[0])
+
+    @staticmethod
+    def predict_probability(
+        artifact: bytes, *, feature_names: list[str], features: dict[str, float]
+    ) -> float:
+        """Return the estimated probability for the positive (label 1) class."""
+        model = SignalModelTrainer._load_model(
+            artifact, feature_names=feature_names, features=features
+        )
+        classes = list(model.classes_)
+        if 1 not in classes:
+            raise ValueError("registered model does not support positive-class probabilities")
+        probability = model.predict_proba(
+            SignalModelTrainer._feature_row(feature_names, features)
+        )[0][classes.index(1)]
+        return float(probability)
+
+    @staticmethod
+    def _feature_row(feature_names: list[str], features: dict[str, float]) -> np.ndarray:
+        return np.asarray([[features[name] for name in feature_names]], dtype=float)
+
+    @staticmethod
+    def _load_model(artifact: bytes, *, feature_names: list[str], features: dict[str, float]):
         if set(features) != set(feature_names):
             raise ValueError("features must match the registered model feature names")
         values = np.asarray([[features[name] for name in feature_names]], dtype=float)
         if not np.isfinite(values).all():
             raise ValueError("features must contain only finite values")
         # Only internally generated registry artifacts are loaded here.
-        model = pickle.loads(artifact)
-        return int(model.predict(values)[0])
+        return pickle.loads(artifact)
