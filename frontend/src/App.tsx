@@ -80,7 +80,7 @@ type MonitoringPayload = {
   };
 };
 
-type BacktestPayload = {
+type SingleBacktestPayload = {
   symbol: string;
   strategy_id: string;
   data_source: string;
@@ -92,6 +92,26 @@ type BacktestPayload = {
   equity_curve: { timestamp: string; equity: number; drawdown: number }[];
   trades: { entry_time: string; exit_time: string; quantity: number; entry_price: number; exit_price: number; pnl: number; holding_bars: number }[];
 };
+
+type WalkForwardBacktestPayload = {
+  symbol: string;
+  strategy_id: string;
+  model_type: string | null;
+  data_source: string;
+  fold_count: number;
+  folds: {
+    fold: number;
+    training_start: string;
+    training_end: string;
+    validation_start: string;
+    validation_end: string;
+    test_start: string;
+    test_end: string;
+    metrics: Record<string, number | null>;
+  }[];
+};
+
+type BacktestPayload = SingleBacktestPayload | WalkForwardBacktestPayload;
 
 const API_ORIGIN = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const API_URL = `${API_ORIGIN}/api/dashboard/overview`;
@@ -125,6 +145,7 @@ function App() {
   const [agentLoading, setAgentLoading] = useState(false);
   const [monitoring, setMonitoring] = useState<MonitoringPayload | null>(null);
   const [monitoringError, setMonitoringError] = useState<string | null>(null);
+  const [backtestMode, setBacktestMode] = useState("single");
   const [backtestSymbol, setBacktestSymbol] = useState("RELIANCE.NS");
   const [backtestStrategy, setBacktestStrategy] = useState("moving_average");
   const [backtestBars, setBacktestBars] = useState("120");
@@ -132,6 +153,13 @@ function App() {
   const [backtestCommission, setBacktestCommission] = useState("0.001");
   const [backtestSlippage, setBacktestSlippage] = useState("5");
   const [backtestSpread, setBacktestSpread] = useState("2");
+  const [backtestModelType, setBacktestModelType] = useState("logistic_regression");
+  const [backtestBuyThreshold, setBacktestBuyThreshold] = useState("0.65");
+  const [backtestSellThreshold, setBacktestSellThreshold] = useState("0.35");
+  const [backtestTrainingWindow, setBacktestTrainingWindow] = useState("60");
+  const [backtestValidationWindow, setBacktestValidationWindow] = useState("20");
+  const [backtestTestWindow, setBacktestTestWindow] = useState("20");
+  const [backtestStepSize, setBacktestStepSize] = useState("20");
   const [backtestStart, setBacktestStart] = useState("");
   const [backtestEnd, setBacktestEnd] = useState("");
   const [backtest, setBacktest] = useState<BacktestPayload | null>(null);
@@ -147,14 +175,28 @@ function App() {
       strategy_id: backtestStrategy,
       limit: backtestBars,
       initial_cash: backtestCapital,
-      commission_rate: backtestCommission,
-      slippage_bps: backtestSlippage,
-      spread_bps: backtestSpread,
     });
-    if (backtestStart) params.set("start_date", backtestStart);
-    if (backtestEnd) params.set("end_date", backtestEnd);
+    let endpoint = "/api/backtests/run";
+    if (backtestMode === "walk_forward") {
+      endpoint = "/api/backtests/walk-forward";
+      params.set("training_window", backtestTrainingWindow);
+      params.set("validation_window", backtestValidationWindow);
+      params.set("test_window", backtestTestWindow);
+      params.set("step_size", backtestStepSize);
+      if (backtestStrategy === "ml_probability") {
+        params.set("model_type", backtestModelType);
+        params.set("buy_threshold", backtestBuyThreshold);
+        params.set("sell_threshold", backtestSellThreshold);
+      }
+    } else {
+      params.set("commission_rate", backtestCommission);
+      params.set("slippage_bps", backtestSlippage);
+      params.set("spread_bps", backtestSpread);
+      if (backtestStart) params.set("start_date", backtestStart);
+      if (backtestEnd) params.set("end_date", backtestEnd);
+    }
     try {
-      const response = await fetch(`${API_ORIGIN}/api/backtests/run?${params.toString()}`);
+      const response = await fetch(`${API_ORIGIN}${endpoint}?${params.toString()}`);
       if (!response.ok) {
         const detail = (await response.json().catch(() => ({}))) as { detail?: string };
         throw new Error(detail.detail ?? `API returned ${response.status}`);
@@ -386,25 +428,54 @@ function App() {
           <div className="backtest-layout">
             <form className="panel backtest-form" onSubmit={runBacktest}>
               <label>Symbol<input required value={backtestSymbol} onChange={(event) => setBacktestSymbol(event.target.value)} /></label>
-              <label>Strategy<select value={backtestStrategy} onChange={(event) => setBacktestStrategy(event.target.value)}><option value="moving_average">Moving average crossover</option><option value="buy_and_hold">Buy and hold</option></select></label>
-              <div className="backtest-dates"><label>Start date<input type="date" value={backtestStart} onChange={(event) => setBacktestStart(event.target.value)} /></label><label>End date<input type="date" value={backtestEnd} onChange={(event) => setBacktestEnd(event.target.value)} /></label></div>
-              <label>Bars to include (20–300)<input type="number" min="20" max="300" required value={backtestBars} onChange={(event) => setBacktestBars(event.target.value)} /></label>
+              <label>Evaluation<select value={backtestMode} onChange={(event) => { const mode = event.target.value; setBacktestMode(mode); if (mode === "walk_forward" && backtestStrategy === "buy_and_hold") setBacktestStrategy("moving_average"); }}><option value="single">Single historical window</option><option value="walk_forward">Chronological walk-forward</option></select></label>
+              <label>Strategy<select value={backtestStrategy} onChange={(event) => setBacktestStrategy(event.target.value)}><option value="moving_average">Moving average crossover</option>{backtestMode === "single" ? <option value="buy_and_hold">Buy and hold</option> : <option value="ml_probability">ML probability</option>}</select></label>
+              {backtestMode === "single" ? <div className="backtest-dates"><label>Start date<input type="date" value={backtestStart} onChange={(event) => setBacktestStart(event.target.value)} /></label><label>End date<input type="date" value={backtestEnd} onChange={(event) => setBacktestEnd(event.target.value)} /></label></div> : <div className="walk-forward-windows"><label>Training bars<input type="number" min="2" required value={backtestTrainingWindow} onChange={(event) => setBacktestTrainingWindow(event.target.value)} /></label><label>Validation bars<input type="number" min="1" required value={backtestValidationWindow} onChange={(event) => setBacktestValidationWindow(event.target.value)} /></label><label>Test bars<input type="number" min="1" required value={backtestTestWindow} onChange={(event) => setBacktestTestWindow(event.target.value)} /></label><label>Step bars<input type="number" min="1" required value={backtestStepSize} onChange={(event) => setBacktestStepSize(event.target.value)} /></label></div>}
+              <label>Bars to include<input type="number" min={backtestMode === "single" ? 20 : 3} max={backtestMode === "single" ? 300 : 10000} required value={backtestBars} onChange={(event) => setBacktestBars(event.target.value)} /></label>
+              {backtestMode === "walk_forward" && backtestStrategy === "ml_probability" && <>
+                <label>Classifier<select value={backtestModelType} onChange={(event) => setBacktestModelType(event.target.value)}><option value="logistic_regression">Logistic Regression</option><option value="random_forest">Random Forest</option></select></label>
+                <div className="backtest-dates"><label>Buy probability<input type="number" min="0.01" max="1" step="0.01" required value={backtestBuyThreshold} onChange={(event) => setBacktestBuyThreshold(event.target.value)} /></label><label>Sell probability<input type="number" min="0" max="0.99" step="0.01" required value={backtestSellThreshold} onChange={(event) => setBacktestSellThreshold(event.target.value)} /></label></div>
+                <p className="research-muted">The model is refit on each training window and scored only on its later test window.</p>
+              </>}
               <label>Initial capital (INR)<input type="number" min="1" step="any" required value={backtestCapital} onChange={(event) => setBacktestCapital(event.target.value)} /></label>
-              <div className="backtest-costs"><label>Commission rate<input type="number" min="0" max="0.999999" step="any" value={backtestCommission} onChange={(event) => setBacktestCommission(event.target.value)} /></label><label>Slippage (bps)<input type="number" min="0" step="any" value={backtestSlippage} onChange={(event) => setBacktestSlippage(event.target.value)} /></label><label>Spread (bps)<input type="number" min="0" step="any" value={backtestSpread} onChange={(event) => setBacktestSpread(event.target.value)} /></label></div>
+              {backtestMode === "single" && <div className="backtest-costs"><label>Commission rate<input type="number" min="0" max="0.999999" step="any" value={backtestCommission} onChange={(event) => setBacktestCommission(event.target.value)} /></label><label>Slippage (bps)<input type="number" min="0" step="any" value={backtestSlippage} onChange={(event) => setBacktestSlippage(event.target.value)} /></label><label>Spread (bps)<input type="number" min="0" step="any" value={backtestSpread} onChange={(event) => setBacktestSpread(event.target.value)} /></label></div>}
               {backtestError && <p className="research-error" role="alert">Backtest unavailable: {backtestError}</p>}
-              <button className="refresh-button research-submit" type="submit" disabled={backtestLoading}>{backtestLoading ? "Running backtest…" : "Run backtest"}</button>
+              <button className="refresh-button research-submit" type="submit" disabled={backtestLoading}>{backtestLoading ? "Running backtest…" : backtestMode === "walk_forward" ? "Run walk-forward evaluation" : "Run backtest"}</button>
             </form>
             <article className="panel backtest-output" aria-live="polite">
-              <div className="panel-heading"><div><h3>{backtest ? `${backtest.symbol} results` : "Backtest results"}</h3><p>{backtest ? `${backtest.strategy_id.replace(/_/g, " ")} · ${backtest.data_source} data` : "Configure a run to see performance"}</p></div>{backtest && <span className="count-badge">{backtest.trade_count} trades</span>}</div>
+              <div className="panel-heading"><div><h3>{backtest ? `${backtest.symbol} results` : "Backtest results"}</h3><p>{backtest ? `${backtest.strategy_id.replace(/_/g, " ")} · ${backtest.data_source} data` : "Configure a run to see performance"}</p></div>{backtest && <span className="count-badge">{"folds" in backtest ? `${backtest.fold_count} folds` : `${backtest.trade_count} trades`}</span>}</div>
               {backtest ? <>
                 {backtest.data_source === "synthetic" && <p className="research-disclaimer">Synthetic sample data is illustrative and does not represent actual market performance.</p>}
-                <div className="backtest-metrics"><BacktestMetric label="Total return" value={`${((backtest.metrics.total_return ?? 0) * 100).toFixed(2)}%`} /><BacktestMetric label="Sharpe ratio" value={(backtest.metrics.sharpe_ratio ?? 0).toFixed(2)} /><BacktestMetric label="Max drawdown" value={`${((backtest.metrics.max_drawdown ?? 0) * 100).toFixed(2)}%`} /><BacktestMetric label="Ending equity" value={formatMoney(backtest.ending_equity)} /></div>
-                <div className="backtest-comparison"><span>Strategy comparison using the same window and costs</span><strong>Moving average {( (backtest.comparison.moving_average?.total_return ?? 0) * 100).toFixed(2)}%</strong><strong>Buy &amp; hold {( (backtest.comparison.buy_and_hold?.total_return ?? 0) * 100).toFixed(2)}%</strong></div>
-                <div className="equity-chart"><svg viewBox="0 0 760 180" role="img" aria-label="Backtest equity curve"><polyline points={equityPolyline(backtest.equity_curve)} fill="none" stroke="#62d6a0" strokeWidth="2.5" vectorEffect="non-scaling-stroke" /></svg><div><span>Equity curve</span><span>{backtest.equity_curve.length} observations</span></div></div>
-                <h4>Closed trades</h4>
-                {backtest.trades.length ? <div className="table-wrap"><table><thead><tr><th>Entry</th><th>Exit</th><th>Qty</th><th>Entry price</th><th>Exit price</th><th>P&amp;L</th></tr></thead><tbody>{backtest.trades.slice().reverse().slice(0, 20).map((trade) => <tr key={`${trade.entry_time}-${trade.exit_time}`}><td>{new Date(trade.entry_time).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}</td><td>{new Date(trade.exit_time).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}</td><td>{trade.quantity.toLocaleString("en-IN", { maximumFractionDigits: 3 })}</td><td>{formatMoney(trade.entry_price)}</td><td>{formatMoney(trade.exit_price)}</td><td className={trade.pnl >= 0 ? "positive-text" : "negative-text"}>{formatMoney(trade.pnl)}</td></tr>)}</tbody></table></div> : <p className="research-muted">No closed trades in this window.</p>}
+                {"folds" in backtest ? <>
+                  <p className="research-muted">Each row reports performance on that fold’s held-out test window. Costs use the walk-forward endpoint defaults.</p>
+                  {backtest.folds.length ? <div className="table-wrap"><table><thead><tr><th>Fold</th><th>Test window</th><th>Return</th><th>Sharpe</th><th>Max drawdown</th><th>Trades</th></tr></thead><tbody>{backtest.folds.map((fold) => <tr key={fold.fold}><td>{fold.fold}</td><td>{new Date(fold.test_start).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })} – {new Date(fold.test_end).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}</td><td>{(((fold.metrics.total_return ?? 0) * 100)).toFixed(2)}%</td><td>{(fold.metrics.sharpe_ratio ?? 0).toFixed(2)}</td><td>{(((fold.metrics.max_drawdown ?? 0) * 100)).toFixed(2)}%</td><td>{fold.metrics.trade_count ?? 0}</td></tr>)}</tbody></table></div> : <p className="research-muted">The selected history is too short to create a complete fold.</p>}
+                </> : <>
+                  <div className="backtest-metrics"><BacktestMetric label="Total return" value={`${((backtest.metrics.total_return ?? 0) * 100).toFixed(2)}%`} /><BacktestMetric label="Sharpe ratio" value={(backtest.metrics.sharpe_ratio ?? 0).toFixed(2)} /><BacktestMetric label="Max drawdown" value={`${((backtest.metrics.max_drawdown ?? 0) * 100).toFixed(2)}%`} /><BacktestMetric label="Ending equity" value={formatMoney(backtest.ending_equity)} /></div>
+                  <div className="backtest-comparison"><span>Strategy comparison using the same window and costs</span><strong>Moving average {( (backtest.comparison.moving_average?.total_return ?? 0) * 100).toFixed(2)}%</strong><strong>Buy &amp; hold {( (backtest.comparison.buy_and_hold?.total_return ?? 0) * 100).toFixed(2)}%</strong></div>
+                  <div className="equity-chart"><svg viewBox="0 0 760 180" role="img" aria-label="Backtest equity curve"><polyline points={equityPolyline(backtest.equity_curve)} fill="none" stroke="#62d6a0" strokeWidth="2.5" vectorEffect="non-scaling-stroke" /></svg><div><span>Equity curve</span><span>{backtest.equity_curve.length} observations</span></div></div>
+                  <h4>Closed trades</h4>
+                  {backtest.trades.length ? (
+                    <div className="table-wrap">
+                      <table>
+                        <thead><tr><th>Entry</th><th>Exit</th><th>Qty</th><th>Entry price</th><th>Exit price</th><th>P&amp;L</th></tr></thead>
+                        <tbody>
+                          {backtest.trades.slice().reverse().slice(0, 20).map((trade) => (
+                            <tr key={`${trade.entry_time}-${trade.exit_time}`}>
+                              <td>{new Date(trade.entry_time).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}</td>
+                              <td>{new Date(trade.exit_time).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}</td>
+                              <td>{trade.quantity.toLocaleString("en-IN", { maximumFractionDigits: 3 })}</td>
+                              <td>{formatMoney(trade.entry_price)}</td>
+                              <td>{formatMoney(trade.exit_price)}</td>
+                              <td className={trade.pnl >= 0 ? "positive-text" : "negative-text"}>{formatMoney(trade.pnl)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : <p className="research-muted">No closed trades in this window.</p>}
+                </>}
               </> : <EmptyState>Run a historical simulation to see metrics, equity, and trade history.</EmptyState>}
-              <p className="research-footnote">Backtest fills use next-bar opens and include the configured commission, slippage, and spread assumptions. Historical results do not predict future returns.</p>
+              <p className="research-footnote">Backtest fills use next-bar opens and include transaction-cost assumptions. Historical results do not predict future returns.</p>
             </article>
           </div>
         </section>
@@ -464,7 +535,7 @@ function BacktestMetric({ label, value }: { label: string; value: string }) {
   return <div><span>{label}</span><strong>{value}</strong></div>;
 }
 
-function equityPolyline(points: BacktestPayload["equity_curve"]) {
+function equityPolyline(points: SingleBacktestPayload["equity_curve"]) {
   if (points.length < 2) return "";
   const values = points.map((point) => point.equity);
   const min = Math.min(...values);
