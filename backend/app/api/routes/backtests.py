@@ -251,6 +251,11 @@ async def walk_forward_backtest(
                 "test_start": fold.test_start.isoformat(),
                 "test_end": fold.test_end.isoformat(),
                 "metrics": _finite_metrics(fold.metrics),
+                "comparison": {
+                    strategy: _finite_metrics(strategy_metrics)
+                    for strategy, strategy_metrics in fold.comparison.items()
+                    if strategy != strategy_id
+                },
             }
             for fold in result.folds
         ],

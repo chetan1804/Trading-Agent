@@ -208,6 +208,10 @@ def test_ml_walk_forward_backtest_fits_only_before_test_windows() -> None:
     assert payload["model_type"] == "logistic_regression"
     assert payload["fold_count"] == 2
     assert all("metrics" in fold for fold in payload["folds"])
+    assert all(
+        set(fold["comparison"]) == {"moving_average", "buy_and_hold"}
+        for fold in payload["folds"]
+    )
 
 
 def test_risk_api_evaluation_endpoints_work() -> None:

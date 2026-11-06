@@ -10,6 +10,8 @@ from trading.backtesting.engine import BacktestConfig, BacktestEngine
 from trading.backtesting.metrics import calculate_performance_metrics
 from trading.data.validation import validate_ohlcv
 from trading.strategies.base import Strategy
+from trading.strategies.buy_hold import BuyAndHoldStrategy
+from trading.strategies.moving_average import MovingAverageCrossoverStrategy
 
 
 @dataclass(frozen=True)
@@ -34,6 +36,7 @@ class WalkForwardFold:
     test_start: datetime
     test_end: datetime
     metrics: dict[str, float | int]
+    comparison: dict[str, dict[str, float | int]]
 
 
 @dataclass(frozen=True)
@@ -86,8 +89,24 @@ def run_walk_forward(
         validation = frame.iloc[train_end:validation_end].copy()
         test = frame.iloc[validation_end:test_end].copy()
         strategy = strategy_builder(training, validation)
-        result = BacktestEngine(backtest_config).run(test, strategy)
-        metrics = calculate_performance_metrics(result.equity_curve, result.trades)
+        engine = BacktestEngine(backtest_config)
+        result = engine.run(test, strategy)
+        metrics = calculate_performance_metrics(
+            result.equity_curve,
+            result.trades,
+            turnover_value=result.turnover,
+        )
+        comparison_results: dict[str, dict[str, float | int]] = {}
+        comparators: dict[str, Strategy] = {"buy_and_hold": BuyAndHoldStrategy()}
+        if {"sma_20", "sma_50"}.issubset(test.columns):
+            comparators["moving_average"] = MovingAverageCrossoverStrategy()
+        for comparator_id, comparator in comparators.items():
+            comparator_result = engine.run(test, comparator)
+            comparison_results[comparator_id] = calculate_performance_metrics(
+                comparator_result.equity_curve,
+                comparator_result.trades,
+                turnover_value=comparator_result.turnover,
+            )
         folds.append(
             WalkForwardFold(
                 fold=fold_number,
@@ -98,6 +117,7 @@ def run_walk_forward(
                 test_start=pd.Timestamp(test["timestamp"].iloc[0]).to_pydatetime(),
                 test_end=pd.Timestamp(test["timestamp"].iloc[-1]).to_pydatetime(),
                 metrics=metrics,
+                comparison=comparison_results,
             )
         )
         fold_number += 1
