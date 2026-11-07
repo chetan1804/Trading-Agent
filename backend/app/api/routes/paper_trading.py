@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from trading.broker.order import Order
 from trading.broker.paper_broker import PaperBroker
 from trading.portfolio.manager import PortfolioManager
@@ -33,6 +33,18 @@ async def _save_fill_state(request: Request, order: Order, broker: PaperBroker) 
         await session.commit()
 
 
+async def _save_market_update(request: Request, orders: list[Order], broker: PaperBroker) -> None:
+    session_factory = getattr(request.app.state, "database_session_factory", None)
+    if session_factory is None:
+        raise HTTPException(status_code=503, detail="paper trading storage is unavailable")
+    async with session_factory() as session:
+        repository = PaperOrderRepository(session)
+        for order in orders:
+            await repository.save(order, commit=False)
+        await PaperPortfolioRepository(session).save(broker.snapshot_state(), commit=False)
+        await session.commit()
+
+
 class PaperTradeRequest(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=32)
     side: str = Field(..., pattern="^(BUY|SELL)$")
@@ -46,6 +58,27 @@ class PaperTradeRequest(BaseModel):
 class PaperFillRequest(BaseModel):
     price: float = Field(..., gt=0, allow_inf_nan=False)
     quantity: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+
+
+class PaperMarketBarRequest(BaseModel):
+    symbol: str = Field(..., min_length=1, max_length=32)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    open: float = Field(..., gt=0, allow_inf_nan=False)
+    high: float = Field(..., gt=0, allow_inf_nan=False)
+    low: float = Field(..., gt=0, allow_inf_nan=False)
+    close: float = Field(..., gt=0, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def validate_bar(self) -> PaperMarketBarRequest:
+        if self.timestamp.tzinfo is None:
+            self.timestamp = self.timestamp.replace(tzinfo=UTC)
+        else:
+            self.timestamp = self.timestamp.astimezone(UTC)
+        if self.high < max(self.open, self.close):
+            raise ValueError("high must be greater than or equal to open and close")
+        if self.low > min(self.open, self.close) or self.low > self.high:
+            raise ValueError("low must be less than or equal to open, close, and high")
+        return self
 
 
 def _serialize_order(order: Order) -> dict[str, object]:
@@ -173,6 +206,49 @@ async def fill_paper_trade(
     await _save_fill_state(request, order, broker)
     portfolio = PortfolioManager.from_broker(broker).snapshot()
     return {"order": _serialize_order(order), "portfolio": portfolio}
+
+
+@router.post("/paper-trading/market-update")
+async def process_paper_market_update(
+    request: Request,
+    payload: PaperMarketBarRequest,
+    _auth: None = Depends(require_api_key),
+) -> dict[str, object]:
+    broker = getattr(request.app.state, "paper_broker", None)
+    if broker is None:
+        raise HTTPException(status_code=500, detail="paper broker is not initialized")
+    lock = getattr(request.app.state, "paper_order_lock", None)
+    if lock is None:
+        return await _process_paper_market_update(request, payload, broker)
+    async with lock:
+        return await _process_paper_market_update(request, payload, broker)
+
+
+async def _process_paper_market_update(
+    request: Request,
+    payload: PaperMarketBarRequest,
+    broker: PaperBroker,
+) -> dict[str, object]:
+    try:
+        triggered = broker.process_market_bar(
+            symbol=payload.symbol,
+            open_price=payload.open,
+            high=payload.high,
+            low=payload.low,
+            close=payload.close,
+            timestamp=payload.timestamp,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    await _save_market_update(request, triggered, broker)
+    portfolio = PortfolioManager.from_broker(broker).snapshot()
+    return {
+        "symbol": payload.symbol.strip().upper(),
+        "timestamp": payload.timestamp.isoformat(),
+        "triggered_count": len(triggered),
+        "orders": [_serialize_order(order) for order in triggered],
+        "portfolio": portfolio,
+    }
 
 
 @router.get("/paper-trading/orders")

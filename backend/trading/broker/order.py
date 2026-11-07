@@ -48,6 +48,10 @@ class Order:
             raise ValueError("limit price must be positive")
         if self.stop_price is not None and self.stop_price <= 0:
             raise ValueError("stop price must be positive")
+        if self.order_type == "LIMIT" and self.limit_price is None:
+            raise ValueError("limit orders require a limit price")
+        if self.order_type == "STOP" and self.stop_price is None:
+            raise ValueError("stop orders require a stop price")
 
     @property
     def remaining_quantity(self) -> float:

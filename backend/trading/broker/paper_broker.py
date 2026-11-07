@@ -195,6 +195,7 @@ class PaperBroker:
         price: float,
         quantity: float | None = None,
         fees: float | None = None,
+        timestamp: datetime | None = None,
     ) -> Order:
         order = self.orders.get(order_id)
         if order is None:
@@ -202,7 +203,7 @@ class PaperBroker:
         if order.status is OrderStatus.FILLED:
             return order
         if order.status not in {OrderStatus.OPEN, OrderStatus.PARTIALLY_FILLED}:
-            raise ValueError(f"cannot fill an order in status {order.status.value}")
+            raise ValueError(f"cannot fill an order in status {order.status.value.lower()}")
 
         if not math.isfinite(price) or price <= 0:
             raise ValueError("fill price must be finite and positive")
@@ -218,6 +219,11 @@ class PaperBroker:
             adjusted_price *= 1 + (self.slippage_bps / 10_000)
         else:
             adjusted_price *= 1 - (self.slippage_bps / 10_000)
+        if order.order_type == "LIMIT" and order.limit_price is not None:
+            if order.side == "BUY":
+                adjusted_price = min(adjusted_price, order.limit_price)
+            else:
+                adjusted_price = max(adjusted_price, order.limit_price)
 
         fee = float(fees) if fees is not None else adjusted_price * fill_quantity * self.fee_rate
         if not math.isfinite(fee) or fee < 0:
@@ -255,8 +261,60 @@ class PaperBroker:
 
         self.last_prices[order.symbol] = adjusted_price
         self.peak_equity = max(self.peak_equity, self.equity)
-        self.last_trade_at_by_symbol[order.symbol] = datetime.now(UTC)
+        self.last_trade_at_by_symbol[order.symbol] = timestamp or datetime.now(UTC)
         return order
+
+    def process_market_bar(
+        self,
+        *,
+        symbol: str,
+        open_price: float,
+        high: float,
+        low: float,
+        close: float,
+        timestamp: datetime | None = None,
+    ) -> list[Order]:
+        """Match active STOP/LIMIT paper orders against one OHLC bar.
+
+        Orders are evaluated independently from trade generation. A stop gap
+        fills at the worse open; a limit gap receives the better open. If no
+        order triggers, the bar close still updates portfolio marks.
+        """
+        prices = (open_price, high, low, close)
+        if any(not math.isfinite(value) or value <= 0 for value in prices):
+            raise ValueError("OHLC prices must be finite and positive")
+        if high < max(open_price, close) or low > min(open_price, close) or low > high:
+            raise ValueError("OHLC prices violate high/low constraints")
+        if not symbol or not symbol.strip():
+            raise ValueError("symbol is required")
+
+        normalized_symbol = symbol.strip().upper()
+        triggered: list[Order] = []
+        for order in self.orders.values():
+            if order.symbol != normalized_symbol or not order.is_active:
+                continue
+            reference_price: float | None = None
+            if order.order_type == "STOP" and order.stop_price is not None:
+                if order.side == "BUY" and high >= order.stop_price:
+                    reference_price = max(open_price, order.stop_price)
+                elif order.side == "SELL" and low <= order.stop_price:
+                    reference_price = min(open_price, order.stop_price)
+            elif order.order_type == "LIMIT" and order.limit_price is not None:
+                if order.side == "BUY" and low <= order.limit_price:
+                    reference_price = min(open_price, order.limit_price)
+                elif order.side == "SELL" and high >= order.limit_price:
+                    reference_price = max(open_price, order.limit_price)
+            if reference_price is not None:
+                self.fill_order(
+                    order.id,
+                    price=reference_price,
+                    timestamp=timestamp,
+                )
+                triggered.append(order)
+
+        self.last_prices[normalized_symbol] = float(close)
+        self.peak_equity = max(self.peak_equity, self.equity)
+        return triggered
 
     def cancel_order(self, order_id: str) -> Order:
         order = self.orders.get(order_id)

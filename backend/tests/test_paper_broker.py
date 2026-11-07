@@ -59,3 +59,48 @@ def test_cancelled_order_cannot_be_filled() -> None:
     broker.cancel_order(order.id)
     with pytest.raises(ValueError, match="cancelled"):
         broker.fill_order(order.id, price=250.0, quantity=2)
+
+
+def test_market_bar_triggers_gap_through_stop_and_marks_close() -> None:
+    broker = PaperBroker(initial_cash=10_000, fee_rate=0, slippage_bps=0)
+    entry = broker.create_order(symbol="DEMO", side="BUY", quantity=10)
+    broker.submit_order(entry, market_price=100)
+    broker.fill_order(entry.id, price=100)
+    stop = broker.create_order(
+        symbol="DEMO", side="SELL", quantity=10, order_type="STOP", stop_price=95
+    )
+    broker.submit_order(stop, market_price=100)
+
+    triggered = broker.process_market_bar(
+        symbol="demo", open_price=90, high=93, low=89, close=92, timestamp=NOW
+    )
+
+    assert triggered == [stop]
+    assert stop.status is OrderStatus.FILLED
+    assert stop.avg_fill_price == pytest.approx(90)
+    assert broker.positions == {}
+    assert broker.last_prices["DEMO"] == pytest.approx(92)
+    assert broker.daily_pnl == pytest.approx(-100)
+
+
+def test_limit_fill_respects_limit_price_after_slippage() -> None:
+    broker = PaperBroker(initial_cash=10_000, fee_rate=0, slippage_bps=100)
+    order = broker.create_order(
+        symbol="DEMO", side="BUY", quantity=10, order_type="LIMIT", limit_price=95
+    )
+    broker.submit_order(order, market_price=95)
+
+    triggered = broker.process_market_bar(
+        symbol="DEMO", open_price=90, high=96, low=89, close=93
+    )
+
+    assert triggered == [order]
+    assert order.status is OrderStatus.FILLED
+    assert order.avg_fill_price == pytest.approx(90.9)
+
+
+def test_stop_and_limit_order_types_require_trigger_prices() -> None:
+    with pytest.raises(ValueError, match="limit orders require"):
+        Order(symbol="DEMO", side="BUY", quantity=1, order_type="LIMIT")
+    with pytest.raises(ValueError, match="stop orders require"):
+        Order(symbol="DEMO", side="SELL", quantity=1, order_type="STOP")

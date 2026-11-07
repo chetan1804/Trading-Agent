@@ -286,6 +286,46 @@ def test_paper_trading_order_api_endpoints_work() -> None:
     assert listed["orders"][0]["symbol"] == "DEMO"
 
 
+def test_paper_market_update_triggers_submitted_stop_order(monkeypatch) -> None:
+    from app.api.routes import paper_trading
+    from trading.broker.order import OrderStatus
+
+    async def skip_persistence(request, orders, broker) -> None:
+        return None
+
+    monkeypatch.setattr(paper_trading, "_save_market_update", skip_persistence)
+    app = create_app(Settings(app_env="test", enable_trading=False))
+    broker = app.state.paper_broker
+    broker.risk_manager = None
+    entry = broker.create_order(symbol="DEMO", side="BUY", quantity=10)
+    broker.submit_order(entry, market_price=100)
+    broker.fill_order(entry.id, price=100)
+    stop = broker.create_order(
+        symbol="DEMO", side="SELL", quantity=10, order_type="STOP", stop_price=95
+    )
+    broker.submit_order(stop, market_price=100)
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/paper-trading/market-update",
+        json={
+            "symbol": "DEMO",
+            "timestamp": "2024-01-03T00:00:00Z",
+            "open": 90,
+            "high": 93,
+            "low": 89,
+            "close": 92,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["triggered_count"] == 1
+    assert payload["orders"][0]["status"] == OrderStatus.FILLED.value
+    assert broker.positions == {}
+    assert broker.last_prices["DEMO"] == 92
+
+
 def test_ai_sentiment_api_endpoint_works() -> None:
     app = create_app(Settings(enable_trading=False))
     client = TestClient(app)
