@@ -85,12 +85,70 @@ def test_final_unclosed_position_is_marked_to_market() -> None:
     assert result.ending_equity == pytest.approx(expected_equity)
 
 
+def test_stop_loss_exits_intrabar_with_conservative_stop_priority() -> None:
+    bars = _bars()
+    bars.loc[4, "high"] = 140.0
+    result = BacktestEngine(
+        BacktestConfig(
+            initial_cash=1_000,
+            costs=TransactionCosts(commission_rate=0, slippage_bps=0, spread_bps=0),
+            stop_loss_fraction=0.1,
+            take_profit_fraction=0.1,
+        )
+    ).run(bars, MovingAverageCrossoverStrategy(2, 3))
+
+    trade = result.trades.iloc[0]
+    assert trade["exit_reason"] == "stop_loss"
+    assert trade["exit_price"] == pytest.approx(108.0)
+    assert result.open_position is None
+
+
+def test_take_profit_exits_at_limit_when_stop_is_not_touched() -> None:
+    bars = _bars()
+    bars.loc[4, "high"] = 140.0
+    bars.loc[4, "low"] = 109.0
+    bars.loc[4, "close"] = 130.0
+    result = BacktestEngine(
+        BacktestConfig(
+            initial_cash=1_000,
+            costs=TransactionCosts(commission_rate=0, slippage_bps=0, spread_bps=0),
+            stop_loss_fraction=0.1,
+            take_profit_fraction=0.1,
+        )
+    ).run(bars, MovingAverageCrossoverStrategy(2, 3))
+
+    trade = result.trades.iloc[0]
+    assert trade["exit_reason"] == "take_profit"
+    assert trade["exit_price"] == pytest.approx(132.0)
+    assert result.open_position is None
+
+
+def test_stop_loss_uses_worse_open_when_price_gaps_through_stop() -> None:
+    bars = _bars()
+    bars.loc[4, "open"] = 100.0
+    bars.loc[4, "high"] = 106.0
+    bars.loc[4, "low"] = 95.0
+    result = BacktestEngine(
+        BacktestConfig(
+            initial_cash=1_000,
+            costs=TransactionCosts(commission_rate=0, slippage_bps=0, spread_bps=0),
+            stop_loss_fraction=0.1,
+        )
+    ).run(bars, MovingAverageCrossoverStrategy(2, 3))
+
+    trade = result.trades.iloc[0]
+    assert trade["exit_reason"] == "stop_loss"
+    assert trade["exit_price"] == pytest.approx(100.0)
+
+
 def test_backtest_requires_one_symbol_and_valid_configuration() -> None:
     data = pd.concat([_bars(), _bars().assign(symbol="OTHER")], ignore_index=True)
     with pytest.raises(ValueError, match="exactly one symbol"):
         _engine().run(data, MovingAverageCrossoverStrategy(2, 3))
     with pytest.raises(ValueError, match="initial_cash"):
         BacktestConfig(initial_cash=0)
+    with pytest.raises(ValueError, match="stop_loss_fraction"):
+        BacktestConfig(stop_loss_fraction=0)
     with pytest.raises(ValueError, match="cannot be negative"):
         TransactionCosts(slippage_bps=-1)
 

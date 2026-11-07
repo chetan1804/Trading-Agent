@@ -172,10 +172,12 @@ def test_strategy_api_endpoints_work() -> None:
 
 
 def test_backtesting_api_endpoints_work() -> None:
-    app = create_app(Settings(enable_trading=False))
+    app = create_app(Settings(app_env="test", enable_trading=False))
     client = TestClient(app)
 
-    response = client.get("/api/backtests/run?symbol=DEMO&limit=30")
+    response = client.get(
+        "/api/backtests/run?symbol=DEMO&limit=30&stop_loss_fraction=0.02&take_profit_fraction=0.05"
+    )
     assert response.status_code == 200
     payload = response.json()
     assert payload["symbol"] == "DEMO"

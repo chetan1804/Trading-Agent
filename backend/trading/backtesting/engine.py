@@ -14,12 +14,20 @@ class BacktestConfig:
     initial_cash: float = 100_000.0
     position_size_fraction: float = 1.0
     costs: TransactionCosts = TransactionCosts()
+    stop_loss_fraction: float | None = None
+    take_profit_fraction: float | None = None
 
     def __post_init__(self) -> None:
         if self.initial_cash <= 0:
             raise ValueError("initial_cash must be positive")
         if not 0 < self.position_size_fraction <= 1:
             raise ValueError("position_size_fraction must be greater than 0 and at most 1")
+        for name, value in (
+            ("stop_loss_fraction", self.stop_loss_fraction),
+            ("take_profit_fraction", self.take_profit_fraction),
+        ):
+            if value is not None and not 0 < value <= 1:
+                raise ValueError(f"{name} must be greater than 0 and at most 1")
 
 
 @dataclass(frozen=True)
@@ -36,6 +44,7 @@ class BacktestTrade:
     pnl: float
     return_fraction: float
     holding_bars: int
+    exit_reason: str
 
 
 @dataclass(frozen=True)
@@ -123,32 +132,56 @@ class BacktestEngine:
                         )
                 elif pending_signal.action == "SELL" and position is not None:
                     fill_price = self.config.costs.fill_price(float(bar["open"]), "SELL")
-                    notional = position.quantity * fill_price
-                    exit_commission = self.config.costs.commission(notional)
-                    cash += notional - exit_commission
-                    turnover += notional
-                    pnl = (
-                        (fill_price - position.entry_price) * position.quantity
-                        - position.entry_commission
-                        - exit_commission
+                    trade = self._make_trade(
+                        position,
+                        timestamp.to_pydatetime(),
+                        bar_index,
+                        fill_price,
+                        "strategy_signal",
                     )
-                    entry_notional = position.entry_price * position.quantity
-                    closed_trades.append(
-                        BacktestTrade(
-                            symbol=position.symbol,
-                            strategy_id=position.strategy_id,
-                            entry_time=position.entry_time,
-                            exit_time=timestamp.to_pydatetime(),
-                            quantity=position.quantity,
-                            entry_price=position.entry_price,
-                            exit_price=fill_price,
-                            entry_commission=position.entry_commission,
-                            exit_commission=exit_commission,
-                            pnl=pnl,
-                            return_fraction=pnl / (entry_notional + position.entry_commission),
-                            holding_bars=bar_index - position.entry_bar,
-                        )
+                    cash += position.quantity * fill_price - trade.exit_commission
+                    turnover += position.quantity * fill_price
+                    closed_trades.append(trade)
+                    position = None
+
+            if position is not None:
+                stop_price = (
+                    position.entry_price * (1 - self.config.stop_loss_fraction)
+                    if self.config.stop_loss_fraction is not None
+                    else None
+                )
+                take_price = (
+                    position.entry_price * (1 + self.config.take_profit_fraction)
+                    if self.config.take_profit_fraction is not None
+                    else None
+                )
+                open_price = float(bar["open"])
+                exit_reference: float | None = None
+                exit_reason: str | None = None
+                # If both levels are touched in one OHLC bar, assume the stop
+                # was reached first to avoid optimistic intrabar ordering.
+                if stop_price is not None and float(bar["low"]) <= stop_price:
+                    exit_reference = min(open_price, stop_price)
+                    exit_reason = "stop_loss"
+                elif take_price is not None and float(bar["high"]) >= take_price:
+                    exit_reference = max(open_price, take_price)
+                    exit_reason = "take_profit"
+                if exit_reference is not None and exit_reason is not None:
+                    fill_price = (
+                        exit_reference
+                        if exit_reason == "take_profit"
+                        else self.config.costs.fill_price(exit_reference, "SELL")
                     )
+                    trade = self._make_trade(
+                        position,
+                        timestamp.to_pydatetime(),
+                        bar_index,
+                        fill_price,
+                        exit_reason,
+                    )
+                    cash += position.quantity * fill_price - trade.exit_commission
+                    turnover += position.quantity * fill_price
+                    closed_trades.append(trade)
                     position = None
 
             market_value = position.quantity * float(bar["close"]) if position else 0.0
@@ -180,6 +213,38 @@ class BacktestEngine:
             equity_curve=equity_curve,
             open_position=position,
             turnover=turnover,
+        )
+
+    def _make_trade(
+        self,
+        position: OpenPosition,
+        exit_time: datetime,
+        exit_bar: int,
+        exit_price: float,
+        exit_reason: str,
+    ) -> BacktestTrade:
+        notional = position.quantity * exit_price
+        exit_commission = self.config.costs.commission(notional)
+        pnl = (
+            (exit_price - position.entry_price) * position.quantity
+            - position.entry_commission
+            - exit_commission
+        )
+        entry_notional = position.entry_price * position.quantity
+        return BacktestTrade(
+            symbol=position.symbol,
+            strategy_id=position.strategy_id,
+            entry_time=position.entry_time,
+            exit_time=exit_time,
+            quantity=position.quantity,
+            entry_price=position.entry_price,
+            exit_price=exit_price,
+            entry_commission=position.entry_commission,
+            exit_commission=exit_commission,
+            pnl=pnl,
+            return_fraction=pnl / (entry_notional + position.entry_commission),
+            holding_bars=exit_bar - position.entry_bar,
+            exit_reason=exit_reason,
         )
 
     @staticmethod

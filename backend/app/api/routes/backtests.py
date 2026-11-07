@@ -40,6 +40,8 @@ async def run_backtest(
     commission_rate: float = Query(default=0.001, ge=0, lt=1),
     slippage_bps: float = Query(default=5.0, ge=0),
     spread_bps: float = Query(default=2.0, ge=0),
+    stop_loss_fraction: float | None = Query(default=None, gt=0, le=1),
+    take_profit_fraction: float | None = Query(default=None, gt=0, le=1),
     start_date: date | None = None,
     end_date: date | None = None,
 ) -> dict[str, object]:
@@ -81,7 +83,14 @@ async def run_backtest(
         slippage_bps=slippage_bps,
         spread_bps=spread_bps,
     )
-    engine = BacktestEngine(BacktestConfig(initial_cash=initial_cash, costs=costs))
+    engine = BacktestEngine(
+        BacktestConfig(
+            initial_cash=initial_cash,
+            costs=costs,
+            stop_loss_fraction=stop_loss_fraction,
+            take_profit_fraction=take_profit_fraction,
+        )
+    )
     moving_average_result = engine.run(
         run_data,
         MovingAverageCrossoverStrategy(fast_window=20, slow_window=50),
@@ -126,6 +135,7 @@ async def run_backtest(
                 "pnl": float(row.pnl),
                 "return_fraction": float(row.return_fraction),
                 "holding_bars": int(row.holding_bars),
+                "exit_reason": str(row.exit_reason),
             }
             for row in result.trades.itertuples(index=False)
         ],
@@ -158,6 +168,8 @@ async def walk_forward_backtest(
     model_type: Literal["logistic_regression", "random_forest"] = "logistic_regression",
     buy_threshold: float = Query(default=0.65, gt=0, le=1),
     sell_threshold: float = Query(default=0.35, ge=0, lt=1),
+    stop_loss_fraction: float | None = Query(default=None, gt=0, le=1),
+    take_profit_fraction: float | None = Query(default=None, gt=0, le=1),
 ) -> dict[str, object]:
     symbol_upper = symbol.upper()
     store = getattr(request.app.state, "market_data_store", {})
@@ -230,7 +242,11 @@ async def walk_forward_backtest(
             featured_data,
             build_strategy,
             config=config,
-            backtest_config=BacktestConfig(initial_cash=initial_cash),
+            backtest_config=BacktestConfig(
+                initial_cash=initial_cash,
+                stop_loss_fraction=stop_loss_fraction,
+                take_profit_fraction=take_profit_fraction,
+            ),
         )
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error

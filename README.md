@@ -81,7 +81,7 @@ signals = MovingAverageCrossoverStrategy().generate_signals(features)
 
 The default strategy uses SMA 20 and SMA 50. It emits BUY or SELL only on a crossover and HOLD otherwise. Signals are observations at bar close, not orders; any execution must be evaluated no earlier than the next bar and pass separate risk controls.
 
-Backtest with next-bar-open fills and the illustrative default cost model:
+Backtest with next-bar-open fills, the illustrative default cost model, and optional protective exits:
 
 ```python
 from trading.backtesting.engine import BacktestEngine
@@ -93,11 +93,13 @@ result = BacktestEngine().run(features, MovingAverageCrossoverStrategy())
 metrics = calculate_performance_metrics(result.equity_curve, result.trades)
 # Replace the illustrative default rates with your documented assumption.
 custom_engine = BacktestEngine(BacktestConfig(costs=TransactionCosts(commission_rate=0.0005)))
+# Optional: set `stop_loss_fraction=0.02` and/or `take_profit_fraction=0.05`
+# on BacktestConfig to enable protective exits relative to the entry fill.
 ```
 
-Default costs are placeholders (10 bps commission, 5 bps slippage, 2 bps spread); set `BacktestConfig(costs=TransactionCosts(...))` to match a documented market/broker assumption. The initial engine is single-symbol and long-only. Open final positions are marked to market, not forcibly liquidated.
+Default costs are placeholders (10 bps commission, 5 bps slippage, 2 bps spread); set `BacktestConfig(costs=TransactionCosts(...))` to match a documented market/broker assumption. Stop-loss and take-profit fractions are disabled by default. Stop-market exits use the stop level or a worse opening gap, then apply adverse slippage and spread. Take-profit limit exits use the target or a better opening price and apply commission. If a bar touches both levels, the simulator assumes the stop occurred first. The engine is single-symbol and long-only. Open final positions are marked to market, not forcibly liquidated.
 
-`GET /api/backtests/run` reports the moving-average strategy beside a cost-adjusted Buy & Hold baseline over the same window. Results include turnover and turnover ratio, monthly returns, trade outcome/holding-period distributions, and equity/drawdown points. ML strategy comparison will be added when an ML strategy is connected to the backtest engine.
+`GET /api/backtests/run` reports the moving-average strategy beside a cost-adjusted Buy & Hold baseline over the same window. Results include turnover and turnover ratio, monthly returns, trade outcome/holding-period distributions, and equity/drawdown points. Optional `stop_loss_fraction` and `take_profit_fraction` query parameters enable protective exits.
 
 Run chronological walk-forward evaluation with `GET /api/backtests/walk-forward`. The endpoint reports separate training, validation, and test ranges and per-test-fold metrics. It supports the moving-average baseline and `strategy_id=ml_probability` with Logistic Regression or Random Forest (`model_type`) and configurable buy/sell probability thresholds. Every fold compares the selected strategy with Moving Average and Buy & Hold on the same held-out test bars and transaction cost assumptions. The ML path constructs the target as next-bar close direction, fits only on the training window (the final training label becomes observable by the first validation close), then evaluates on the later test window. Rows with unavailable warm-up features are excluded from fitting. This is a baseline comparison, not a guarantee of future performance.
 
@@ -123,7 +125,7 @@ New exposure is disabled by default with `ENABLE_TRADING=false`. Configure risk 
 
 The dashboard risk summary reports the kill-switch state and current exposure, drawdown, open positions, and daily realized P&amp;L against their configured pre-trade limits. Daily loss currently tracks realized paper-broker P&amp;L; it is distinct from the portfolio's net realized-plus-unrealized P&amp;L.
 
-The dashboard **Backtesting** section offers a single-window run or chronological walk-forward evaluation. Single-window runs support moving-average crossover and buy-and-hold with configurable date range and costs. Walk-forward runs support moving-average crossover or ML probability signals with configurable training, validation, test, and step windows; ML runs also expose classifier and buy/sell thresholds. Each held-out fold shows selected strategy returns beside Moving Average and Buy & Hold returns on the same test bars. Both modes prefer ingested bars and label fallback synthetic data; simulations remain single-symbol and long-only.
+The dashboard **Backtesting** section offers a single-window run or chronological walk-forward evaluation. Single-window runs support moving-average crossover and buy-and-hold with configurable date range, costs, and optional stop-loss/take-profit fractions. Walk-forward runs support moving-average crossover or ML probability signals with configurable training, validation, test, and step windows; ML runs also expose classifier and buy/sell thresholds. Both modes can apply stop-loss and take-profit exits. Each held-out fold shows selected strategy returns beside Moving Average and Buy & Hold returns on the same test bars. Both modes prefer ingested bars and label fallback synthetic data; simulations remain single-symbol and long-only.
 
 ```python
 from datetime import UTC, datetime

@@ -90,7 +90,7 @@ type SingleBacktestPayload = {
   metrics: Record<string, number | null>;
   comparison: Record<string, Record<string, number | null>>;
   equity_curve: { timestamp: string; equity: number; drawdown: number }[];
-  trades: { entry_time: string; exit_time: string; quantity: number; entry_price: number; exit_price: number; pnl: number; holding_bars: number }[];
+  trades: { entry_time: string; exit_time: string; quantity: number; entry_price: number; exit_price: number; pnl: number; holding_bars: number; exit_reason: string }[];
 };
 
 type WalkForwardBacktestPayload = {
@@ -154,6 +154,8 @@ function App() {
   const [backtestCommission, setBacktestCommission] = useState("0.001");
   const [backtestSlippage, setBacktestSlippage] = useState("5");
   const [backtestSpread, setBacktestSpread] = useState("2");
+  const [backtestStopLoss, setBacktestStopLoss] = useState("");
+  const [backtestTakeProfit, setBacktestTakeProfit] = useState("");
   const [backtestModelType, setBacktestModelType] = useState("logistic_regression");
   const [backtestBuyThreshold, setBacktestBuyThreshold] = useState("0.65");
   const [backtestSellThreshold, setBacktestSellThreshold] = useState("0.35");
@@ -177,6 +179,8 @@ function App() {
       limit: backtestBars,
       initial_cash: backtestCapital,
     });
+    if (backtestStopLoss) params.set("stop_loss_fraction", backtestStopLoss);
+    if (backtestTakeProfit) params.set("take_profit_fraction", backtestTakeProfit);
     let endpoint = "/api/backtests/run";
     if (backtestMode === "walk_forward") {
       endpoint = "/api/backtests/walk-forward";
@@ -439,6 +443,7 @@ function App() {
                 <p className="research-muted">The model is refit on each training window and scored only on its later test window.</p>
               </>}
               <label>Initial capital (INR)<input type="number" min="1" step="any" required value={backtestCapital} onChange={(event) => setBacktestCapital(event.target.value)} /></label>
+              <div className="backtest-dates"><label>Stop loss fraction (optional)<input type="number" min="0.001" max="1" step="0.001" value={backtestStopLoss} onChange={(event) => setBacktestStopLoss(event.target.value)} placeholder="Disabled" /></label><label>Take profit fraction (optional)<input type="number" min="0.001" max="1" step="0.001" value={backtestTakeProfit} onChange={(event) => setBacktestTakeProfit(event.target.value)} placeholder="Disabled" /></label></div>
               {backtestMode === "single" && <div className="backtest-costs"><label>Commission rate<input type="number" min="0" max="0.999999" step="any" value={backtestCommission} onChange={(event) => setBacktestCommission(event.target.value)} /></label><label>Slippage (bps)<input type="number" min="0" step="any" value={backtestSlippage} onChange={(event) => setBacktestSlippage(event.target.value)} /></label><label>Spread (bps)<input type="number" min="0" step="any" value={backtestSpread} onChange={(event) => setBacktestSpread(event.target.value)} /></label></div>}
               {backtestError && <p className="research-error" role="alert">Backtest unavailable: {backtestError}</p>}
               <button className="refresh-button research-submit" type="submit" disabled={backtestLoading}>{backtestLoading ? "Running backtest…" : backtestMode === "walk_forward" ? "Run walk-forward evaluation" : "Run backtest"}</button>
@@ -458,12 +463,13 @@ function App() {
                   {backtest.trades.length ? (
                     <div className="table-wrap">
                       <table>
-                        <thead><tr><th>Entry</th><th>Exit</th><th>Qty</th><th>Entry price</th><th>Exit price</th><th>P&amp;L</th></tr></thead>
+                        <thead><tr><th>Entry</th><th>Exit</th><th>Exit reason</th><th>Qty</th><th>Entry price</th><th>Exit price</th><th>P&amp;L</th></tr></thead>
                         <tbody>
                           {backtest.trades.slice().reverse().slice(0, 20).map((trade) => (
                             <tr key={`${trade.entry_time}-${trade.exit_time}`}>
                               <td>{new Date(trade.entry_time).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}</td>
                               <td>{new Date(trade.exit_time).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}</td>
+                              <td>{trade.exit_reason.replace(/_/g, " ")}</td>
                               <td>{trade.quantity.toLocaleString("en-IN", { maximumFractionDigits: 3 })}</td>
                               <td>{formatMoney(trade.entry_price)}</td>
                               <td>{formatMoney(trade.exit_price)}</td>

@@ -83,7 +83,7 @@ def calculate_monthly_returns(equity_curve: pd.DataFrame) -> dict[str, float]:
     month_start = first_timestamp.replace(
         day=1, hour=0, minute=0, second=0, microsecond=0, nanosecond=0
     )
-    baseline_time = month_start - pd.Timedelta(nanoseconds=1)
+    baseline_time = month_start - pd.Timedelta(days=1)
     # The engine's first equity value is the starting capital before any return interval.
     series.loc[baseline_time] = float(values.iloc[0])
     month_ends = series.resample("ME").last().dropna()
