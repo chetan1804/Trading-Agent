@@ -37,6 +37,7 @@ class PaperBroker:
         self.daily_pnl = 0.0
         self.peak_equity = self.initial_cash
         self.last_trade_at_by_symbol: dict[str, datetime] = {}
+        self.last_market_timestamp_by_symbol: dict[str, datetime] = {}
 
     @property
     def equity(self) -> float:
@@ -122,6 +123,10 @@ class PaperBroker:
                 symbol: timestamp.isoformat()
                 for symbol, timestamp in self.last_trade_at_by_symbol.items()
             },
+            "last_market_timestamp_by_symbol": {
+                symbol: timestamp.isoformat()
+                for symbol, timestamp in self.last_market_timestamp_by_symbol.items()
+            },
         }
 
     def restore_state(self, state: dict[str, Any]) -> None:
@@ -139,6 +144,10 @@ class PaperBroker:
         self.last_trade_at_by_symbol = {
             symbol: datetime.fromisoformat(timestamp)
             for symbol, timestamp in state["last_trade_at_by_symbol"].items()
+        }
+        self.last_market_timestamp_by_symbol = {
+            symbol: datetime.fromisoformat(timestamp)
+            for symbol, timestamp in state.get("last_market_timestamp_by_symbol", {}).items()
         }
 
     def submit_order(
@@ -318,8 +327,15 @@ class PaperBroker:
             raise ValueError("OHLC prices violate high/low constraints")
         if not symbol or not symbol.strip():
             raise ValueError("symbol is required")
+        event_time = timestamp or datetime.now(UTC)
+        if event_time.tzinfo is None:
+            raise ValueError("market bar timestamp must be timezone-aware")
+        event_time = event_time.astimezone(UTC)
 
         normalized_symbol = symbol.strip().upper()
+        previous_time = self.last_market_timestamp_by_symbol.get(normalized_symbol)
+        if previous_time is not None and event_time <= previous_time:
+            raise ValueError("market bar timestamp must be later than the previous update")
         triggered: list[Order] = []
         cancelled: list[Order] = []
         active_orders = sorted(
@@ -349,7 +365,7 @@ class PaperBroker:
                 self.fill_order(
                     order.id,
                     price=reference_price,
-                    timestamp=timestamp,
+                    timestamp=event_time,
                 )
                 triggered.append(order)
                 if order.oco_group is not None:
@@ -364,6 +380,7 @@ class PaperBroker:
                             cancelled.append(sibling)
 
         self.last_prices[normalized_symbol] = float(close)
+        self.last_market_timestamp_by_symbol[normalized_symbol] = event_time
         self.peak_equity = max(self.peak_equity, self.equity)
         return MarketBarMatch(triggered, cancelled)
 

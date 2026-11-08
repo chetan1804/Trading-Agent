@@ -341,6 +341,19 @@ def test_paper_market_update_triggers_submitted_stop_order(monkeypatch) -> None:
     assert broker.positions == {}
     assert broker.last_prices["DEMO"] == 105
 
+    duplicate = client.post(
+        "/api/paper-trading/market-update",
+        json={
+            "symbol": "DEMO",
+            "timestamp": "2024-01-03T00:00:00Z",
+            "open": 90,
+            "high": 115,
+            "low": 90,
+            "close": 105,
+        },
+    )
+    assert duplicate.status_code == 409
+
 
 def test_ai_sentiment_api_endpoint_works() -> None:
     app = create_app(Settings(enable_trading=False))

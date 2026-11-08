@@ -41,4 +41,5 @@ class PaperPortfolioRepository:
             "daily_pnl": record.daily_pnl,
             "peak_equity": record.peak_equity,
             "last_trade_at_by_symbol": record.last_trade_at_by_symbol,
+            "last_market_timestamp_by_symbol": record.last_market_timestamp_by_symbol,
         }

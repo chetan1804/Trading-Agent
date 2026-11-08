@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from trading.broker.order import Order, OrderStatus
@@ -166,3 +166,25 @@ def test_oco_orders_must_match_symbol_side_and_quantity() -> None:
 
     assert mismatched.status is OrderStatus.REJECTED
     assert mismatched.rejection_reason == "OCO orders must match symbol, side, and quantity"
+
+
+def test_market_updates_reject_duplicate_or_out_of_order_bars_and_restore_cursor() -> None:
+    broker = PaperBroker(initial_cash=10_000)
+    first = {
+        "symbol": "DEMO",
+        "open_price": 100,
+        "high": 102,
+        "low": 99,
+        "close": 101,
+        "timestamp": NOW,
+    }
+    broker.process_market_bar(**first)
+
+    with pytest.raises(ValueError, match="later than the previous update"):
+        broker.process_market_bar(**first)
+    with pytest.raises(ValueError, match="later than the previous update"):
+        broker.process_market_bar(**{**first, "timestamp": NOW - timedelta(minutes=1)})
+
+    restored = PaperBroker(initial_cash=1)
+    restored.restore_state(broker.snapshot_state())
+    assert restored.last_market_timestamp_by_symbol == {"DEMO": NOW}

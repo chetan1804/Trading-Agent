@@ -60,6 +60,7 @@ class PaperPortfolioRecord(Base):
     daily_pnl: Mapped[float] = mapped_column(Float, nullable=False)
     peak_equity: Mapped[float] = mapped_column(Float, nullable=False)
     last_trade_at_by_symbol: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)
+    last_market_timestamp_by_symbol: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)
 
 
 class StrategyDecisionRecord(Base):
