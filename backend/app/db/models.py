@@ -44,6 +44,7 @@ class PaperOrderRecord(Base):
     avg_fill_price: Mapped[float | None] = mapped_column(Float)
     rejection_reason: Mapped[str | None] = mapped_column(String(500))
     idempotency_key: Mapped[str | None] = mapped_column(String(128))
+    oco_group: Mapped[str | None] = mapped_column(String(64))
 
 
 class PaperPortfolioRecord(Base):

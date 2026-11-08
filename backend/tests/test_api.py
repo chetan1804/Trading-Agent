@@ -301,9 +301,23 @@ def test_paper_market_update_triggers_submitted_stop_order(monkeypatch) -> None:
     broker.submit_order(entry, market_price=100)
     broker.fill_order(entry.id, price=100)
     stop = broker.create_order(
-        symbol="DEMO", side="SELL", quantity=10, order_type="STOP", stop_price=95
+        symbol="DEMO",
+        side="SELL",
+        quantity=10,
+        order_type="STOP",
+        stop_price=95,
+        oco_group="position-1",
+    )
+    target = broker.create_order(
+        symbol="DEMO",
+        side="SELL",
+        quantity=10,
+        order_type="LIMIT",
+        limit_price=110,
+        oco_group="position-1",
     )
     broker.submit_order(stop, market_price=100)
+    broker.submit_order(target, market_price=100)
     client = TestClient(app)
 
     response = client.post(
@@ -312,18 +326,20 @@ def test_paper_market_update_triggers_submitted_stop_order(monkeypatch) -> None:
             "symbol": "DEMO",
             "timestamp": "2024-01-03T00:00:00Z",
             "open": 90,
-            "high": 93,
-            "low": 89,
-            "close": 92,
+            "high": 115,
+            "low": 90,
+            "close": 105,
         },
     )
 
     assert response.status_code == 200, response.text
     payload = response.json()
     assert payload["triggered_count"] == 1
+    assert payload["cancelled_count"] == 1
     assert payload["orders"][0]["status"] == OrderStatus.FILLED.value
+    assert payload["cancelled_orders"][0]["status"] == OrderStatus.CANCELLED.value
     assert broker.positions == {}
-    assert broker.last_prices["DEMO"] == 92
+    assert broker.last_prices["DEMO"] == 105
 
 
 def test_ai_sentiment_api_endpoint_works() -> None:

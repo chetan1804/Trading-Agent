@@ -36,6 +36,7 @@ class Order:
     rejection_reason: str | None = None
     id: str = field(default_factory=lambda: f"ord-{uuid.uuid4().hex[:12]}")
     idempotency_key: str | None = None
+    oco_group: str | None = None
 
     def __post_init__(self) -> None:
         if not self.symbol or not self.symbol.strip():
@@ -52,6 +53,12 @@ class Order:
             raise ValueError("limit orders require a limit price")
         if self.order_type == "STOP" and self.stop_price is None:
             raise ValueError("stop orders require a stop price")
+        if self.oco_group is not None:
+            self.oco_group = self.oco_group.strip()
+            if not self.oco_group:
+                raise ValueError("oco_group cannot be blank")
+            if len(self.oco_group) > 64:
+                raise ValueError("oco_group cannot exceed 64 characters")
 
     @property
     def remaining_quantity(self) -> float:

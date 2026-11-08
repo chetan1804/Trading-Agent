@@ -29,6 +29,7 @@ class PaperOrderRepository:
             "avg_fill_price": order.avg_fill_price,
             "rejection_reason": order.rejection_reason,
             "idempotency_key": order.idempotency_key,
+            "oco_group": order.oco_group,
         }
         statement = insert(PaperOrderRecord).values(**values)
         statement = statement.on_conflict_do_update(
@@ -63,6 +64,7 @@ class PaperOrderRepository:
                     avg_fill_price=record.avg_fill_price,
                     rejection_reason=record.rejection_reason,
                     idempotency_key=record.idempotency_key,
+                    oco_group=record.oco_group,
                 )
             )
         return orders

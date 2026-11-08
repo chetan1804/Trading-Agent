@@ -52,6 +52,7 @@ class PaperTradeRequest(BaseModel):
     order_type: str = Field(default="MARKET", pattern="^(MARKET|LIMIT|STOP)$")
     limit_price: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     stop_price: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    oco_group: str | None = Field(default=None, min_length=1, max_length=64)
     reduce_only: bool = False
 
 
@@ -93,6 +94,7 @@ def _serialize_order(order: Order) -> dict[str, object]:
         "avg_fill_price": order.avg_fill_price,
         "limit_price": order.limit_price,
         "stop_price": order.stop_price,
+        "oco_group": order.oco_group,
         "rejection_reason": order.rejection_reason,
         "idempotency_key": order.idempotency_key,
         "created_at": order.created_at.isoformat(),
@@ -148,6 +150,7 @@ async def _create_paper_trade(
             order_type=payload.order_type,
             limit_price=payload.limit_price,
             stop_price=payload.stop_price,
+            oco_group=payload.oco_group,
             reduce_only=payload.reduce_only,
             idempotency_key=idempotency_key,
         )
@@ -230,7 +233,7 @@ async def _process_paper_market_update(
     broker: PaperBroker,
 ) -> dict[str, object]:
     try:
-        triggered = broker.process_market_bar(
+        match = broker.process_market_bar(
             symbol=payload.symbol,
             open_price=payload.open,
             high=payload.high,
@@ -240,13 +243,16 @@ async def _process_paper_market_update(
         )
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
-    await _save_market_update(request, triggered, broker)
+    changed_orders = [*match.triggered_orders, *match.cancelled_orders]
+    await _save_market_update(request, changed_orders, broker)
     portfolio = PortfolioManager.from_broker(broker).snapshot()
     return {
         "symbol": payload.symbol.strip().upper(),
         "timestamp": payload.timestamp.isoformat(),
-        "triggered_count": len(triggered),
-        "orders": [_serialize_order(order) for order in triggered],
+        "triggered_count": len(match.triggered_orders),
+        "cancelled_count": len(match.cancelled_orders),
+        "orders": [_serialize_order(order) for order in match.triggered_orders],
+        "cancelled_orders": [_serialize_order(order) for order in match.cancelled_orders],
         "portfolio": portfolio,
     }
 

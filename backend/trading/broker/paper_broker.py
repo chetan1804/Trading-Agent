@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
 from trading.broker.order import Order, OrderStatus
 from trading.risk.manager import AccountRiskState, RiskDecision, RiskManager, TradeProposal
+
+
+@dataclass(frozen=True)
+class MarketBarMatch:
+    triggered_orders: list[Order]
+    cancelled_orders: list[Order]
 
 
 class PaperBroker:
@@ -57,8 +64,11 @@ class PaperBroker:
         stop_price: float | None = None,
         reduce_only: bool = False,
         idempotency_key: str | None = None,
+        oco_group: str | None = None,
     ) -> Order:
         _ = reduce_only
+        if oco_group is not None:
+            oco_group = oco_group.strip()
         if idempotency_key is not None:
             for existing in self.orders.values():
                 if existing.idempotency_key != idempotency_key:
@@ -70,6 +80,7 @@ class PaperBroker:
                     and existing.order_type == order_type
                     and existing.limit_price == limit_price
                     and existing.stop_price == stop_price
+                    and existing.oco_group == oco_group
                 )
                 if not same_request:
                     raise ValueError("idempotency key was already used for a different order")
@@ -82,6 +93,7 @@ class PaperBroker:
             limit_price=limit_price,
             stop_price=stop_price,
             idempotency_key=idempotency_key,
+            oco_group=oco_group,
         )
         self.orders[order.id] = order
         return order
@@ -147,12 +159,31 @@ class PaperBroker:
         if order.status in blocked_states:
             raise ValueError(f"cannot submit an order in status {order.status}")
 
-        duplicate_active_order = any(
-            existing.id != order.id and existing.symbol == order.symbol and existing.is_active
+        active_orders = [
+            existing
             for existing in self.orders.values()
+            if existing.id != order.id and existing.symbol == order.symbol and existing.is_active
+        ]
+        duplicate_active_order = any(
+            order.oco_group is None or existing.oco_group != order.oco_group
+            for existing in active_orders
         )
         if duplicate_active_order:
             return order.reject("an active order already exists for this symbol")
+
+        if order.oco_group is not None:
+            group_members = [
+                existing
+                for existing in self.orders.values()
+                if existing.is_active and existing.oco_group == order.oco_group
+            ]
+            if any(
+                existing.symbol != order.symbol
+                or existing.side != order.side
+                or existing.quantity != order.quantity
+                for existing in group_members
+            ):
+                return order.reject("OCO orders must match symbol, side, and quantity")
 
         if risk_decision is not None and not risk_decision.approved:
             return order.reject(risk_decision.reason)
@@ -273,7 +304,7 @@ class PaperBroker:
         low: float,
         close: float,
         timestamp: datetime | None = None,
-    ) -> list[Order]:
+    ) -> MarketBarMatch:
         """Match active STOP/LIMIT paper orders against one OHLC bar.
 
         Orders are evaluated independently from trade generation. A stop gap
@@ -290,8 +321,18 @@ class PaperBroker:
 
         normalized_symbol = symbol.strip().upper()
         triggered: list[Order] = []
-        for order in self.orders.values():
+        cancelled: list[Order] = []
+        active_orders = sorted(
+            self.orders.values(),
+            key=lambda order: (order.order_type != "STOP", order.created_at, order.id),
+        )
+        triggered_groups: set[str] = set()
+        for order in active_orders:
             if order.symbol != normalized_symbol or not order.is_active:
+                continue
+            if order.oco_group is not None and order.oco_group in triggered_groups:
+                order.cancel()
+                cancelled.append(order)
                 continue
             reference_price: float | None = None
             if order.order_type == "STOP" and order.stop_price is not None:
@@ -311,10 +352,20 @@ class PaperBroker:
                     timestamp=timestamp,
                 )
                 triggered.append(order)
+                if order.oco_group is not None:
+                    triggered_groups.add(order.oco_group)
+                    for sibling in active_orders:
+                        if (
+                            sibling.id != order.id
+                            and sibling.oco_group == order.oco_group
+                            and sibling.is_active
+                        ):
+                            sibling.cancel()
+                            cancelled.append(sibling)
 
         self.last_prices[normalized_symbol] = float(close)
         self.peak_equity = max(self.peak_equity, self.equity)
-        return triggered
+        return MarketBarMatch(triggered, cancelled)
 
     def cancel_order(self, order_id: str) -> Order:
         order = self.orders.get(order_id)
