@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from trading.broker.order import Order, OrderStatus
+from trading.broker.order import Execution, Order, OrderStatus
 from trading.risk.manager import AccountRiskState, RiskDecision, RiskManager, TradeProposal
 
 
@@ -28,6 +28,7 @@ class PaperBroker:
         self.cash = float(initial_cash)
         self.positions: dict[str, float] = {}
         self.orders: dict[str, Order] = {}
+        self.executions: list[Execution] = []
         self.last_prices: dict[str, float] = {}
         self.position_cost_basis: dict[str, float] = {}
         self.realized_pnl = 0.0
@@ -105,9 +106,30 @@ class PaperBroker:
     def list_orders(self) -> list[Order]:
         return list(self.orders.values())
 
+    def list_executions(self, *, limit: int | None = None) -> list[Execution]:
+        executions = list(self.executions)
+        return executions[-limit:] if limit is not None else executions
+
+    def executions_for_orders(self, order_ids: set[str]) -> list[Execution]:
+        return [execution for execution in self.executions if execution.order_id in order_ids]
+
+    def execution_by_idempotency_key(self, idempotency_key: str) -> Execution | None:
+        return next(
+            (
+                execution
+                for execution in self.executions
+                if execution.idempotency_key == idempotency_key
+            ),
+            None,
+        )
+
     def restore_orders(self, orders: list[Order]) -> None:
         """Load durable order records into this broker instance."""
         self.orders = {order.id: order for order in orders}
+
+    def restore_executions(self, executions: list[Execution]) -> None:
+        """Load the durable paper fill ledger into this broker instance."""
+        self.executions = list(executions)
 
     def snapshot_state(self) -> dict[str, Any]:
         return {
@@ -236,10 +258,30 @@ class PaperBroker:
         quantity: float | None = None,
         fees: float | None = None,
         timestamp: datetime | None = None,
+        idempotency_key: str | None = None,
     ) -> Order:
         order = self.orders.get(order_id)
         if order is None:
             raise KeyError(f"unknown order id {order_id}")
+        if idempotency_key is not None:
+            existing = next(
+                (
+                    execution
+                    for execution in self.executions
+                    if execution.idempotency_key == idempotency_key
+                ),
+                None,
+            )
+            if existing is not None:
+                request_matches = (
+                    existing.order_id == order_id
+                    and existing.requested_price == price
+                    and existing.requested_quantity == quantity
+                    and existing.requested_fees == fees
+                )
+                if not request_matches:
+                    raise ValueError("execution idempotency key was reused with different details")
+                return order
         if order.status is OrderStatus.FILLED:
             return order
         if order.status not in {OrderStatus.OPEN, OrderStatus.PARTIALLY_FILLED}:
@@ -268,6 +310,10 @@ class PaperBroker:
         fee = float(fees) if fees is not None else adjusted_price * fill_quantity * self.fee_rate
         if not math.isfinite(fee) or fee < 0:
             raise ValueError("fees must be finite and non-negative")
+        executed_at = timestamp or datetime.now(UTC)
+        if executed_at.tzinfo is None:
+            raise ValueError("execution timestamp must be timezone-aware")
+        executed_at = executed_at.astimezone(UTC)
         notional = adjusted_price * fill_quantity
         if order.side == "BUY" and notional + fee > self.cash:
             raise ValueError("insufficient paper cash to fill order")
@@ -301,7 +347,22 @@ class PaperBroker:
 
         self.last_prices[order.symbol] = adjusted_price
         self.peak_equity = max(self.peak_equity, self.equity)
-        self.last_trade_at_by_symbol[order.symbol] = timestamp or datetime.now(UTC)
+        self.last_trade_at_by_symbol[order.symbol] = executed_at
+        self.executions.append(
+            Execution(
+                order_id=order.id,
+                symbol=order.symbol,
+                side=order.side,
+                quantity=fill_quantity,
+                price=adjusted_price,
+                fees=fee,
+                executed_at=executed_at,
+                requested_price=float(price),
+                requested_quantity=quantity,
+                requested_fees=fees,
+                idempotency_key=idempotency_key,
+            )
+        )
         return order
 
     def process_market_bar(
@@ -334,7 +395,12 @@ class PaperBroker:
 
         normalized_symbol = symbol.strip().upper()
         previous_time = self.last_market_timestamp_by_symbol.get(normalized_symbol)
-        if previous_time is not None and event_time <= previous_time:
+        previous_trade_time = self.last_trade_at_by_symbol.get(normalized_symbol)
+        latest_activity = max(
+            (value for value in (previous_time, previous_trade_time) if value is not None),
+            default=None,
+        )
+        if latest_activity is not None and event_time <= latest_activity:
             raise ValueError("market bar timestamp must be later than the previous update")
         triggered: list[Order] = []
         cancelled: list[Order] = []

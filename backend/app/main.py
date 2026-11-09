@@ -38,6 +38,7 @@ from app.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.repositories.audit_logs import AuditLogRepository
 from app.repositories.market_data import MarketDataRepository
+from app.repositories.paper_executions import PaperExecutionRepository
 from app.repositories.paper_orders import PaperOrderRepository
 from app.repositories.paper_portfolio import PaperPortfolioRepository
 
@@ -102,17 +103,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if app_settings.app_env == "test":
                 persisted_bars = {}
                 persisted_orders = []
+                persisted_executions = []
                 persisted_portfolio = None
             else:
                 async with application.state.database_session_factory() as session:
                     market_repository = MarketDataRepository(session)
+                    execution_repository = PaperExecutionRepository(session)
                     order_repository = PaperOrderRepository(session)
                     portfolio_repository = PaperPortfolioRepository(session)
                     persisted_bars = await market_repository.list_all()
                     persisted_orders = await order_repository.list_all()
+                    persisted_executions = await execution_repository.list_all()
                     persisted_portfolio = await portfolio_repository.load()
             application.state.market_data_store = persisted_bars
             application.state.paper_broker.restore_orders(persisted_orders)
+            application.state.paper_broker.restore_executions(persisted_executions)
             if persisted_portfolio is not None:
                 application.state.paper_broker.restore_state(persisted_portfolio)
             yield

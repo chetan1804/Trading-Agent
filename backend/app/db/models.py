@@ -5,6 +5,7 @@ from sqlalchemy import (
     BigInteger,
     DateTime,
     Float,
+    ForeignKey,
     Integer,
     LargeBinary,
     String,
@@ -45,6 +46,30 @@ class PaperOrderRecord(Base):
     rejection_reason: Mapped[str | None] = mapped_column(String(500))
     idempotency_key: Mapped[str | None] = mapped_column(String(128))
     oco_group: Mapped[str | None] = mapped_column(String(64))
+
+
+class PaperExecutionRecord(Base):
+    __tablename__ = "paper_executions"
+    __table_args__ = (
+        UniqueConstraint("idempotency_key", name="uq_paper_executions_idempotency_key"),
+    )
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    order_id: Mapped[str] = mapped_column(
+        String(64), ForeignKey("paper_orders.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    side: Mapped[str] = mapped_column(String(4), nullable=False)
+    quantity: Mapped[float] = mapped_column(Float, nullable=False)
+    price: Mapped[float] = mapped_column(Float, nullable=False)
+    fees: Mapped[float] = mapped_column(Float, nullable=False)
+    executed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    requested_price: Mapped[float] = mapped_column(Float, nullable=False)
+    requested_quantity: Mapped[float | None] = mapped_column(Float)
+    requested_fees: Mapped[float | None] = mapped_column(Float)
+    idempotency_key: Mapped[str | None] = mapped_column(String(128))
 
 
 class PaperPortfolioRecord(Base):

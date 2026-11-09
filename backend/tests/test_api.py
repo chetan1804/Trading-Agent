@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from app.config import Settings
 from app.main import create_app
 from fastapi.testclient import TestClient
@@ -290,7 +292,7 @@ def test_paper_market_update_triggers_submitted_stop_order(monkeypatch) -> None:
     from app.api.routes import paper_trading
     from trading.broker.order import OrderStatus
 
-    async def skip_persistence(request, orders, broker) -> None:
+    async def skip_persistence(request, orders, executions, broker) -> None:
         return None
 
     monkeypatch.setattr(paper_trading, "_save_market_update", skip_persistence)
@@ -299,7 +301,7 @@ def test_paper_market_update_triggers_submitted_stop_order(monkeypatch) -> None:
     broker.risk_manager = None
     entry = broker.create_order(symbol="DEMO", side="BUY", quantity=10)
     broker.submit_order(entry, market_price=100)
-    broker.fill_order(entry.id, price=100)
+    broker.fill_order(entry.id, price=100, timestamp=datetime(2024, 1, 2, tzinfo=UTC))
     stop = broker.create_order(
         symbol="DEMO",
         side="SELL",
@@ -336,6 +338,8 @@ def test_paper_market_update_triggers_submitted_stop_order(monkeypatch) -> None:
     payload = response.json()
     assert payload["triggered_count"] == 1
     assert payload["cancelled_count"] == 1
+    assert len(payload["executions"]) == 1
+    assert payload["executions"][0]["order_id"] == stop.id
     assert payload["orders"][0]["status"] == OrderStatus.FILLED.value
     assert payload["cancelled_orders"][0]["status"] == OrderStatus.CANCELLED.value
     assert broker.positions == {}
@@ -353,6 +357,42 @@ def test_paper_market_update_triggers_submitted_stop_order(monkeypatch) -> None:
         },
     )
     assert duplicate.status_code == 409
+
+    executions = client.get("/api/paper-trading/executions")
+    assert executions.status_code == 200
+    assert executions.json()["count"] == 2
+
+
+def test_paper_fill_api_uses_execution_idempotency_key(monkeypatch) -> None:
+    from app.api.routes import paper_trading
+
+    async def skip_persistence(request, order, executions, broker) -> None:
+        return None
+
+    monkeypatch.setattr(paper_trading, "_save_fill_state", skip_persistence)
+    app = create_app(Settings(app_env="test", enable_trading=False))
+    broker = app.state.paper_broker
+    broker.risk_manager = None
+    order = broker.create_order(symbol="DEMO", side="BUY", quantity=10)
+    broker.submit_order(order, market_price=100)
+    client = TestClient(app)
+    headers = {"Idempotency-Key": "fill-request-123"}
+    body = {"price": 100, "quantity": 4}
+
+    first = client.post(f"/api/paper-trading/orders/{order.id}/fill", json=body, headers=headers)
+    retry = client.post(f"/api/paper-trading/orders/{order.id}/fill", json=body, headers=headers)
+    conflict = client.post(
+        f"/api/paper-trading/orders/{order.id}/fill",
+        json={"price": 101, "quantity": 4},
+        headers=headers,
+    )
+
+    assert first.status_code == 200
+    assert retry.status_code == 200
+    assert first.json()["execution"]["id"] == retry.json()["execution"]["id"]
+    assert order.filled_quantity == 4
+    assert len(broker.executions) == 1
+    assert conflict.status_code == 409
 
 
 def test_ai_sentiment_api_endpoint_works() -> None:

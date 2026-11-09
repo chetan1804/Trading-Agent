@@ -10,6 +10,22 @@ OrderSide = Literal["BUY", "SELL"]
 OrderType = Literal["MARKET", "LIMIT", "STOP"]
 
 
+@dataclass(frozen=True)
+class Execution:
+    order_id: str
+    symbol: str
+    side: OrderSide
+    quantity: float
+    price: float
+    fees: float
+    executed_at: datetime
+    requested_price: float
+    requested_quantity: float | None
+    requested_fees: float | None
+    idempotency_key: str | None = None
+    id: str = field(default_factory=lambda: f"exec-{uuid.uuid4().hex}")
+
+
 class OrderStatus(StrEnum):
     NEW = "NEW"
     PENDING = "PENDING"

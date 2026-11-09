@@ -65,7 +65,7 @@ def test_market_bar_triggers_gap_through_stop_and_marks_close() -> None:
     broker = PaperBroker(initial_cash=10_000, fee_rate=0, slippage_bps=0)
     entry = broker.create_order(symbol="DEMO", side="BUY", quantity=10)
     broker.submit_order(entry, market_price=100)
-    broker.fill_order(entry.id, price=100)
+    broker.fill_order(entry.id, price=100, timestamp=NOW - timedelta(minutes=1))
     stop = broker.create_order(
         symbol="DEMO", side="SELL", quantity=10, order_type="STOP", stop_price=95
     )
@@ -188,3 +188,42 @@ def test_market_updates_reject_duplicate_or_out_of_order_bars_and_restore_cursor
     restored = PaperBroker(initial_cash=1)
     restored.restore_state(broker.snapshot_state())
     assert restored.last_market_timestamp_by_symbol == {"DEMO": NOW}
+
+
+def test_partial_fills_create_auditable_executions_and_retry_idempotently() -> None:
+    broker = PaperBroker(initial_cash=10_000, fee_rate=0, slippage_bps=0)
+    order = broker.create_order(symbol="DEMO", side="BUY", quantity=10)
+    broker.submit_order(order, market_price=100)
+
+    broker.fill_order(
+        order.id,
+        price=100,
+        quantity=4,
+        timestamp=NOW,
+        idempotency_key="fill-request-1",
+    )
+    retry = broker.fill_order(
+        order.id,
+        price=100,
+        quantity=4,
+        timestamp=NOW,
+        idempotency_key="fill-request-1",
+    )
+
+    assert retry is order
+    assert order.filled_quantity == pytest.approx(4)
+    assert len(broker.executions) == 1
+    execution = broker.executions[0]
+    assert execution.order_id == order.id
+    assert execution.quantity == pytest.approx(4)
+    assert execution.price == pytest.approx(100)
+    assert execution.executed_at == NOW
+
+    with pytest.raises(ValueError, match="reused with different details"):
+        broker.fill_order(
+            order.id,
+            price=101,
+            quantity=4,
+            timestamp=NOW,
+            idempotency_key="fill-request-1",
+        )

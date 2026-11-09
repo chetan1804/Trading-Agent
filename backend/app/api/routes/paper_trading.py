@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field, model_validator
-from trading.broker.order import Order
+from trading.broker.order import Execution, Order
 from trading.broker.paper_broker import PaperBroker
 from trading.portfolio.manager import PortfolioManager
 
 from app.core.security import require_api_key
+from app.repositories.paper_executions import PaperExecutionRepository
 from app.repositories.paper_orders import PaperOrderRepository
 from app.repositories.paper_portfolio import PaperPortfolioRepository
 
@@ -23,17 +24,30 @@ async def _save_order(request: Request, order: Order) -> None:
         await PaperOrderRepository(session).save(order)
 
 
-async def _save_fill_state(request: Request, order: Order, broker: PaperBroker) -> None:
+async def _save_fill_state(
+    request: Request,
+    order: Order,
+    executions: list[Execution],
+    broker: PaperBroker,
+) -> None:
     session_factory = getattr(request.app.state, "database_session_factory", None)
     if session_factory is None:
         raise HTTPException(status_code=503, detail="paper trading storage is unavailable")
     async with session_factory() as session:
         await PaperOrderRepository(session).save(order, commit=False)
+        execution_repository = PaperExecutionRepository(session)
+        for execution in executions:
+            await execution_repository.save(execution, commit=False)
         await PaperPortfolioRepository(session).save(broker.snapshot_state(), commit=False)
         await session.commit()
 
 
-async def _save_market_update(request: Request, orders: list[Order], broker: PaperBroker) -> None:
+async def _save_market_update(
+    request: Request,
+    orders: list[Order],
+    executions: list[Execution],
+    broker: PaperBroker,
+) -> None:
     session_factory = getattr(request.app.state, "database_session_factory", None)
     if session_factory is None:
         raise HTTPException(status_code=503, detail="paper trading storage is unavailable")
@@ -41,6 +55,9 @@ async def _save_market_update(request: Request, orders: list[Order], broker: Pap
         repository = PaperOrderRepository(session)
         for order in orders:
             await repository.save(order, commit=False)
+        execution_repository = PaperExecutionRepository(session)
+        for execution in executions:
+            await execution_repository.save(execution, commit=False)
         await PaperPortfolioRepository(session).save(broker.snapshot_state(), commit=False)
         await session.commit()
 
@@ -98,6 +115,20 @@ def _serialize_order(order: Order) -> dict[str, object]:
         "rejection_reason": order.rejection_reason,
         "idempotency_key": order.idempotency_key,
         "created_at": order.created_at.isoformat(),
+    }
+
+
+def _serialize_execution(execution: Execution) -> dict[str, object]:
+    return {
+        "id": execution.id,
+        "order_id": execution.order_id,
+        "symbol": execution.symbol,
+        "side": execution.side,
+        "quantity": execution.quantity,
+        "price": execution.price,
+        "fees": execution.fees,
+        "executed_at": execution.executed_at.isoformat(),
+        "idempotency_key": execution.idempotency_key,
     }
 
 
@@ -191,6 +222,9 @@ async def fill_paper_trade(
     request: Request,
     order_id: str,
     payload: PaperFillRequest,
+    idempotency_key: str | None = Header(
+        default=None, alias="Idempotency-Key", min_length=8, max_length=128
+    ),
     _auth: None = Depends(require_api_key),
 ) -> dict[str, object]:
     broker = getattr(request.app.state, "paper_broker", None)
@@ -201,14 +235,25 @@ async def fill_paper_trade(
             order_id,
             price=payload.price,
             quantity=payload.quantity,
+            idempotency_key=idempotency_key,
         )
     except KeyError as error:
         raise HTTPException(status_code=404, detail="paper order not found") from error
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
-    await _save_fill_state(request, order, broker)
+    executions = broker.executions_for_orders({order.id})
+    await _save_fill_state(request, order, executions, broker)
     portfolio = PortfolioManager.from_broker(broker).snapshot()
-    return {"order": _serialize_order(order), "portfolio": portfolio}
+    execution = (
+        broker.execution_by_idempotency_key(idempotency_key)
+        if idempotency_key is not None
+        else executions[-1] if executions else None
+    )
+    return {
+        "order": _serialize_order(order),
+        "execution": _serialize_execution(execution) if execution is not None else None,
+        "portfolio": portfolio,
+    }
 
 
 @router.post("/paper-trading/market-update")
@@ -244,7 +289,8 @@ async def _process_paper_market_update(
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     changed_orders = [*match.triggered_orders, *match.cancelled_orders]
-    await _save_market_update(request, changed_orders, broker)
+    executions = broker.executions_for_orders({order.id for order in match.triggered_orders})
+    await _save_market_update(request, changed_orders, executions, broker)
     portfolio = PortfolioManager.from_broker(broker).snapshot()
     return {
         "symbol": payload.symbol.strip().upper(),
@@ -253,6 +299,7 @@ async def _process_paper_market_update(
         "cancelled_count": len(match.cancelled_orders),
         "orders": [_serialize_order(order) for order in match.triggered_orders],
         "cancelled_orders": [_serialize_order(order) for order in match.cancelled_orders],
+        "executions": [_serialize_execution(execution) for execution in executions],
         "portfolio": portfolio,
     }
 
@@ -267,3 +314,19 @@ async def list_paper_trades(
 
     orders = [_serialize_order(order) for order in broker.list_orders()]
     return {"count": len(orders), "orders": orders}
+
+
+@router.get("/paper-trading/executions")
+async def list_paper_executions(
+    request: Request,
+    limit: int = Query(default=100, ge=1, le=500),
+    _auth: None = Depends(require_api_key),
+) -> dict[str, object]:
+    broker = getattr(request.app.state, "paper_broker", None)
+    if broker is None:
+        raise HTTPException(status_code=500, detail="paper broker is not initialized")
+    executions = list(reversed(broker.list_executions(limit=limit)))
+    return {
+        "count": len(executions),
+        "executions": [_serialize_execution(execution) for execution in executions],
+    }
