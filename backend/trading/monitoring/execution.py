@@ -43,20 +43,20 @@ class ExecutionMonitor:
         stale_orders = sum(1 for order in orders if self._health_for(order)["status"] == "stale")
         recent_fills = [
             {
-                "order_id": order.id,
-                "symbol": order.symbol,
-                "side": order.side,
-                "status": order.status.value,
-                "filled_quantity": order.filled_quantity,
-                "avg_fill_price": order.avg_fill_price,
-                "order_submitted_at": self._utc_timestamp(order.created_at),
+                "execution_id": execution.id,
+                "order_id": execution.order_id,
+                "symbol": execution.symbol,
+                "side": execution.side,
+                "quantity": execution.quantity,
+                "price": execution.price,
+                "fees": execution.fees,
+                "executed_at": self._utc_timestamp(execution.executed_at),
             }
-            for order in sorted(
-                orders,
-                key=lambda item: self._sort_timestamp(item.created_at),
+            for execution in sorted(
+                self.broker.executions,
+                key=lambda item: self._sort_timestamp(item.executed_at),
                 reverse=True,
             )
-            if order.filled_quantity > 0 and order.avg_fill_price is not None
         ][:10]
 
         return {

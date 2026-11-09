@@ -36,3 +36,20 @@ def test_execution_monitor_flags_stale_orders() -> None:
 
     assert report["order_health"]["MSFT"]["status"] == "stale"
     assert report["stale_orders"] == 1
+
+
+def test_execution_monitor_reports_partial_fills_as_separate_executions() -> None:
+    broker = PaperBroker(initial_cash=10_000, fee_rate=0, slippage_bps=0)
+    order = broker.create_order(symbol="DEMO", side="BUY", quantity=5)
+    broker.submit_order(order, market_price=10)
+    first_time = datetime(2024, 1, 2, tzinfo=UTC)
+    second_time = first_time + timedelta(minutes=1)
+    broker.fill_order(order.id, price=10, quantity=2, timestamp=first_time)
+    broker.fill_order(order.id, price=11, quantity=3, timestamp=second_time)
+
+    fills = ExecutionMonitor(broker).snapshot()["recent_fills"]
+
+    assert len(fills) == 2
+    assert [fill["quantity"] for fill in fills] == [3, 2]
+    assert [fill["price"] for fill in fills] == [11, 10]
+    assert fills[0]["executed_at"] == second_time.isoformat()
