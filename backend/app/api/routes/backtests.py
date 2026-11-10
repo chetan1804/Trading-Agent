@@ -1,4 +1,5 @@
 import math
+import statistics
 from datetime import date, timedelta
 from typing import Literal
 
@@ -251,12 +252,39 @@ async def walk_forward_backtest(
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
+    def summarize(metrics: list[dict[str, float | int | None]]) -> dict[str, float | int]:
+        returns = [float(item.get("total_return") or 0.0) for item in metrics]
+        drawdowns = [float(item.get("max_drawdown") or 0.0) for item in metrics]
+        sharpes = [float(item.get("sharpe_ratio") or 0.0) for item in metrics]
+        profitable_folds = sum(value > 0 for value in returns)
+        return {
+            "folds": len(metrics),
+            "mean_return": statistics.mean(returns) if returns else 0.0,
+            "median_return": statistics.median(returns) if returns else 0.0,
+            "profitable_folds": profitable_folds,
+            "profitable_fold_rate": profitable_folds / len(returns) if returns else 0.0,
+            "worst_drawdown": min(drawdowns) if drawdowns else 0.0,
+            "mean_sharpe_ratio": statistics.mean(sharpes) if sharpes else 0.0,
+        }
+
+    summary_metrics: dict[str, list[dict[str, float | int | None]]] = {
+        strategy_id: [_finite_metrics(fold.metrics) for fold in result.folds]
+    }
+    for benchmark in ("moving_average", "buy_and_hold"):
+        if benchmark != strategy_id:
+            summary_metrics[benchmark] = [
+                _finite_metrics(fold.comparison[benchmark])
+                for fold in result.folds
+                if benchmark in fold.comparison
+            ]
+
     return {
         "symbol": result.symbol,
         "data_source": data_source,
         "strategy_id": strategy_id,
         "model_type": model_type if strategy_id == "ml_probability" else None,
         "fold_count": len(result.folds),
+        "summary": {name: summarize(metrics) for name, metrics in summary_metrics.items()},
         "folds": [
             {
                 "fold": fold.fold,

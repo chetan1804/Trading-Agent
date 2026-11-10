@@ -101,6 +101,15 @@ type WalkForwardBacktestPayload = {
   model_type: string | null;
   data_source: string;
   fold_count: number;
+  summary: Record<string, {
+    folds: number;
+    mean_return: number;
+    median_return: number;
+    profitable_folds: number;
+    profitable_fold_rate: number;
+    worst_drawdown: number;
+    mean_sharpe_ratio: number;
+  }>;
   folds: {
     fold: number;
     training_start: string;
@@ -456,6 +465,7 @@ function App() {
                 {backtest.data_source === "synthetic" && <p className="research-disclaimer">Synthetic sample data is illustrative and does not represent actual market performance.</p>}
                 {"folds" in backtest ? <>
                   <p className="research-muted">Each row reports performance on that fold’s held-out test window. Costs use the walk-forward endpoint defaults.</p>
+                  {backtest.fold_count > 0 && <div className="table-wrap"><table><thead><tr><th>Strategy</th><th>Mean return</th><th>Median return</th><th>Profitable folds</th><th>Worst drawdown</th><th>Mean Sharpe</th></tr></thead><tbody>{Object.entries(backtest.summary).map(([strategy, stats]) => <tr key={strategy}><td>{strategy.replace(/_/g, " ")}</td><td>{(stats.mean_return * 100).toFixed(2)}%</td><td>{(stats.median_return * 100).toFixed(2)}%</td><td>{stats.profitable_folds}/{stats.folds} ({(stats.profitable_fold_rate * 100).toFixed(0)}%)</td><td>{(stats.worst_drawdown * 100).toFixed(2)}%</td><td>{stats.mean_sharpe_ratio.toFixed(2)}</td></tr>)}</tbody></table><p className="research-muted">Return summaries are arithmetic averages across separate test folds; they are not compounded.</p></div>}
                   {backtest.folds.length ? <div className="table-wrap"><table><thead><tr><th>Fold</th><th>Test window</th><th>Selected return</th>{backtest.strategy_id !== "moving_average" && <th>Moving average</th>}<th>Buy &amp; hold</th><th>Sharpe</th><th>Max drawdown</th><th>Trades</th></tr></thead><tbody>{backtest.folds.map((fold) => <tr key={fold.fold}><td>{fold.fold}</td><td>{new Date(fold.test_start).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })} – {new Date(fold.test_end).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata" })}</td><td>{(((fold.metrics.total_return ?? 0) * 100)).toFixed(2)}%</td>{backtest.strategy_id !== "moving_average" && <td>{(((fold.comparison.moving_average?.total_return ?? 0) * 100)).toFixed(2)}%</td>}<td>{(((fold.comparison.buy_and_hold?.total_return ?? 0) * 100)).toFixed(2)}%</td><td>{(fold.metrics.sharpe_ratio ?? 0).toFixed(2)}</td><td>{(((fold.metrics.max_drawdown ?? 0) * 100)).toFixed(2)}%</td><td>{fold.metrics.trade_count ?? 0}</td></tr>)}</tbody></table></div> : <p className="research-muted">The selected history is too short to create a complete fold.</p>}
                 </> : <>
                   <div className="backtest-metrics"><BacktestMetric label="Total return" value={`${((backtest.metrics.total_return ?? 0) * 100).toFixed(2)}%`} /><BacktestMetric label="Sharpe ratio" value={(backtest.metrics.sharpe_ratio ?? 0).toFixed(2)} /><BacktestMetric label="Max drawdown" value={`${((backtest.metrics.max_drawdown ?? 0) * 100).toFixed(2)}%`} /><BacktestMetric label="Ending equity" value={formatMoney(backtest.ending_equity)} /></div>

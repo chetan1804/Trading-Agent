@@ -211,6 +211,10 @@ def test_ml_walk_forward_backtest_fits_only_before_test_windows() -> None:
     assert payload["strategy_id"] == "ml_probability"
     assert payload["model_type"] == "logistic_regression"
     assert payload["fold_count"] == 2
+    assert set(payload["summary"]) == {"ml_probability", "moving_average", "buy_and_hold"}
+    assert payload["summary"]["ml_probability"]["folds"] == payload["fold_count"]
+    assert 0 <= payload["summary"]["ml_probability"]["profitable_fold_rate"] <= 1
+    assert "worst_drawdown" in payload["summary"]["ml_probability"]
     assert all("metrics" in fold for fold in payload["folds"])
     assert all(
         set(fold["comparison"]) == {"moving_average", "buy_and_hold"}
