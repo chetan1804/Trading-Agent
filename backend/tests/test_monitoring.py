@@ -21,7 +21,7 @@ def test_execution_monitor_tracks_fill_quality_and_order_health() -> None:
     assert summary["open_orders"] == 0
     assert summary["filled_orders"] == 2
     assert summary["fills_by_symbol"]["AAPL"] == 2
-    assert summary["avg_fill_slippage_bps"]["AAPL"] == pytest.approx(1.19047619047619)
+    assert summary["avg_fill_slippage_bps"]["AAPL"] == pytest.approx(0.0)
     assert summary["order_health"]["AAPL"]["status"] == "healthy"
 
 
@@ -53,3 +53,16 @@ def test_execution_monitor_reports_partial_fills_as_separate_executions() -> Non
     assert [fill["quantity"] for fill in fills] == [3, 2]
     assert [fill["price"] for fill in fills] == [11, 10]
     assert fills[0]["executed_at"] == second_time.isoformat()
+
+
+def test_execution_monitor_calculates_adverse_slippage_per_execution() -> None:
+    broker = PaperBroker(initial_cash=10_000, fee_rate=0, slippage_bps=10)
+    order = broker.create_order(symbol="DEMO", side="BUY", quantity=2)
+    broker.submit_order(order, market_price=100)
+    broker.fill_order(order.id, price=100, quantity=2)
+
+    summary = ExecutionMonitor(broker).snapshot()
+
+    assert summary["fills_by_symbol"]["DEMO"] == 1
+    assert summary["avg_fill_slippage_bps"]["DEMO"] == pytest.approx(10.0)
+    assert summary["recent_fills"][0]["slippage_bps"] == pytest.approx(10.0)

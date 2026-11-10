@@ -27,6 +27,7 @@ type DashboardPayload = {
       quantity: number;
       price: number;
       fees: number;
+      slippage_bps: number;
       executed_at: string;
     }[];
   };
@@ -389,8 +390,8 @@ function App() {
 
         <article className="panel recent-fills-panel">
           <div className="panel-heading"><div><h3>Recent paper fills</h3><p>Individual executions · time shown in IST</p></div><span className="count-badge">{execution.recent_fills?.length ?? 0}</span></div>
-          {execution.recent_fills?.length ? <div className="table-wrap"><table><thead><tr><th>Executed</th><th>Symbol</th><th>Side</th><th>Fill qty</th><th>Fill price</th><th>Fees</th></tr></thead><tbody>
-            {execution.recent_fills.map((fill) => <tr key={fill.execution_id}><td>{new Date(fill.executed_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}</td><td className="symbol">{fill.symbol}</td><td>{fill.side}</td><td>{fill.quantity.toLocaleString("en-IN")}</td><td>{formatMoney(fill.price)}</td><td>{formatMoney(fill.fees)}</td></tr>)}
+          {execution.recent_fills?.length ? <div className="table-wrap"><table><thead><tr><th>Executed</th><th>Symbol</th><th>Side</th><th>Fill qty</th><th>Fill price</th><th>Fees</th><th>Slippage</th></tr></thead><tbody>
+            {execution.recent_fills.map((fill) => <tr key={fill.execution_id}><td>{new Date(fill.executed_at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" })}</td><td className="symbol">{fill.symbol}</td><td>{fill.side}</td><td>{fill.quantity.toLocaleString("en-IN")}</td><td>{formatMoney(fill.price)}</td><td>{formatMoney(fill.fees)}</td><td>{fill.slippage_bps.toFixed(1)} bps</td></tr>)}
           </tbody></table></div> : <EmptyState>No paper fills have been recorded.</EmptyState>}
         </article>
 

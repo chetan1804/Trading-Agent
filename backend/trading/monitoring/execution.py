@@ -22,19 +22,23 @@ class ExecutionMonitor:
         order_health: dict[str, dict[str, object]] = {}
 
         for order in orders:
-            if order.status in self._filled_statuses():
-                fills_by_symbol[order.symbol] += 1
-                if order.avg_fill_price is not None:
-                    expected = (
-                        order.limit_price
-                        or self.broker.last_prices.get(order.symbol, order.avg_fill_price)
-                    )
-                    if expected and expected > 0:
-                        slippage = ((order.avg_fill_price - expected) / expected) * 10_000
-                        slippage_by_symbol[order.symbol].append(float(slippage))
-
             health = self._health_for(order)
             order_health[order.symbol] = health
+
+        slippage_by_execution: dict[str, float] = {}
+        for execution in self.broker.executions:
+            fills_by_symbol[execution.symbol] += 1
+            if execution.requested_price <= 0:
+                continue
+            direction = 1 if execution.side == "BUY" else -1
+            slippage = (
+                direction
+                * (execution.price - execution.requested_price)
+                / execution.requested_price
+                * 10_000
+            )
+            slippage_by_symbol[execution.symbol].append(float(slippage))
+            slippage_by_execution[execution.id] = float(slippage)
 
         avg_fill_slippage_bps: dict[str, float] = {}
         for symbol, values in slippage_by_symbol.items():
@@ -50,6 +54,7 @@ class ExecutionMonitor:
                 "quantity": execution.quantity,
                 "price": execution.price,
                 "fees": execution.fees,
+                "slippage_bps": slippage_by_execution.get(execution.id, 0.0),
                 "executed_at": self._utc_timestamp(execution.executed_at),
             }
             for execution in sorted(
