@@ -405,10 +405,11 @@ function App() {
         </article>
 
         <section className="performance-strip">
-          <div><span className="eyebrow">Latest performance report</span><strong>{performance.total_return == null ? "—" : `${(performance.total_return * 100).toFixed(2)}%`}</strong><small>Total return</small></div>
-          <div><strong>{performance.sharpe_ratio == null ? "—" : performance.sharpe_ratio.toFixed(2)}</strong><small>Sharpe ratio</small></div>
-          <div><strong>{formatMoney(performance.final_equity)}</strong><small>Reported final equity</small></div>
-          <p>Performance metrics are populated by completed backtests; they do not predict future results.</p>
+          <div><span className="eyebrow">Paper account performance</span><strong>{performance.total_return == null ? "—" : `${(performance.total_return * 100).toFixed(2)}%`}</strong><small>Total return</small></div>
+          <div><strong>{formatMoney(performance.realized_pnl)}</strong><small>Realized P&amp;L</small></div>
+          <div><strong>{formatMoney(performance.unrealized_pnl)}</strong><small>Unrealized P&amp;L</small></div>
+          <div><strong>{formatMoney(performance.final_equity)}</strong><small>Current equity</small></div>
+          <p>Based on current paper account marks and recorded fills. Historical risk-adjusted performance requires an equity history.</p>
         </section>
         <section className="risk-panel panel" aria-live="polite">
           <div className="panel-heading"><div><p className="eyebrow">Exposure controls</p><h3>Risk status</h3></div><span className={`monitoring-status ${risk?.status ?? "unavailable"}`}>{risk?.status ?? "unavailable"}</span></div>

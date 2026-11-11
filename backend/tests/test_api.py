@@ -663,13 +663,15 @@ def test_market_data_history_sorts_out_of_order_ingestion() -> None:
 
 
 def test_performance_summary_api_endpoint_works() -> None:
-    app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-
-    response = client.get("/api/performance/summary")
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == "ok"
-    assert payload["total_return"] >= -1.0
-    assert payload["final_equity"] > 0
-    assert payload["trade_count"] >= 0
+    app = create_app(Settings(app_env="test", enable_trading=False))
+    with TestClient(app) as client:
+        app.state.paper_broker.cash = 105_000.0
+        response = client.get("/api/performance/summary")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "ok"
+        assert abs(payload["total_return"] - 0.05) < 1e-9
+        assert payload["final_equity"] == 105_000.0
+        assert payload["realized_pnl"] == 0
+        assert payload["execution_count"] == 0
+        assert "sharpe_ratio" not in payload

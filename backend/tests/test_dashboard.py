@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 
 
 def test_dashboard_overview_endpoint_returns_summary() -> None:
-    app = create_app(Settings(enable_trading=False))
+    app = create_app(Settings(app_env="test", enable_trading=False))
     client = TestClient(app)
 
     response = client.get("/api/dashboard/overview")
@@ -14,3 +14,6 @@ def test_dashboard_overview_endpoint_returns_summary() -> None:
     assert "portfolio" in payload
     assert "performance" in payload
     assert "execution" in payload
+    assert payload["performance"]["final_equity"] == 100_000
+    assert payload["performance"]["total_return"] == 0
+    assert "sharpe_ratio" not in payload["performance"]
