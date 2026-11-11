@@ -32,25 +32,40 @@ class PerformanceAnalytics:
         return cls(metrics, final_equity=result.ending_equity)
 
     @classmethod
-    def from_paper_broker(cls, broker: PaperBroker) -> PerformanceAnalytics:
-        """Build a current account summary without inventing historical risk metrics."""
+    def from_paper_broker(
+        cls,
+        broker: PaperBroker,
+        equity_history: list[dict[str, Any]] | None = None,
+    ) -> PerformanceAnalytics:
+        """Build account metrics and derive risk metrics only from recorded history."""
         initial_cash = broker.initial_cash
         equity = broker.equity
         metrics: dict[str, Any] = {
             "total_return": equity / initial_cash - 1 if initial_cash > 0 else 0.0,
             "realized_pnl": broker.realized_pnl,
-            "unrealized_pnl": sum(
-                (broker.last_prices.get(symbol, 0.0)
-                 - broker.position_cost_basis.get(symbol, 0.0) / quantity)
-                * quantity
-                for symbol, quantity in broker.positions.items()
-                if quantity > 0
-            ),
+            "unrealized_pnl": broker.unrealized_pnl,
             "execution_count": len(broker.executions),
             "exit_fill_count": sum(item.side == "SELL" for item in broker.executions),
             "total_fees": sum(item.fees for item in broker.executions),
             "open_positions": sum(quantity > 0 for quantity in broker.positions.values()),
         }
+        if equity_history:
+            history = pd.DataFrame(equity_history)
+            history["timestamp"] = pd.to_datetime(history["captured_at"], utc=True)
+            daily = (
+                history.sort_values("timestamp")
+                .set_index("timestamp")[["equity", "exposure"]]
+                .resample("1D")
+                .last()
+                .dropna()
+                .reset_index()
+            )
+            metrics["history_observations"] = int(len(daily))
+            if len(daily) >= 2:
+                historical_metrics = calculate_performance_metrics(daily, pd.DataFrame())
+                metrics["sharpe_ratio"] = historical_metrics["sharpe_ratio"]
+                metrics["max_drawdown"] = historical_metrics["max_drawdown"]
+                metrics["cagr"] = historical_metrics["cagr"]
         return cls(metrics, final_equity=equity)
 
     @classmethod

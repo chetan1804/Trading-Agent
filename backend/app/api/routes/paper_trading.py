@@ -9,6 +9,7 @@ from trading.broker.paper_broker import PaperBroker
 from trading.portfolio.manager import PortfolioManager
 
 from app.core.security import require_api_key
+from app.repositories.paper_equity import PaperEquityRepository
 from app.repositories.paper_executions import PaperExecutionRepository
 from app.repositories.paper_orders import PaperOrderRepository
 from app.repositories.paper_portfolio import PaperPortfolioRepository
@@ -29,6 +30,7 @@ async def _save_fill_state(
     order: Order,
     executions: list[Execution],
     broker: PaperBroker,
+    new_executions: list[Execution],
 ) -> None:
     session_factory = getattr(request.app.state, "database_session_factory", None)
     if session_factory is None:
@@ -38,8 +40,25 @@ async def _save_fill_state(
         execution_repository = PaperExecutionRepository(session)
         for execution in executions:
             await execution_repository.save(execution, commit=False)
+        equity_repository = PaperEquityRepository(session)
+        for execution in new_executions:
+            await equity_repository.record(
+                f"execution:{execution.id}",
+                broker,
+                captured_at=execution.executed_at,
+                commit=False,
+            )
         await PaperPortfolioRepository(session).save(broker.snapshot_state(), commit=False)
         await session.commit()
+    history = getattr(request.app.state, "paper_equity_history", [])
+    for execution in new_executions:
+        history = equity_repository.cache_daily_snapshot(
+            history,
+            f"execution:{execution.id}",
+            broker,
+            captured_at=execution.executed_at,
+        )
+    request.app.state.paper_equity_history = history
 
 
 async def _save_market_update(
@@ -47,6 +66,8 @@ async def _save_market_update(
     orders: list[Order],
     executions: list[Execution],
     broker: PaperBroker,
+    symbol: str,
+    timestamp: datetime,
 ) -> None:
     session_factory = getattr(request.app.state, "database_session_factory", None)
     if session_factory is None:
@@ -58,8 +79,23 @@ async def _save_market_update(
         execution_repository = PaperExecutionRepository(session)
         for execution in executions:
             await execution_repository.save(execution, commit=False)
+        equity_repository = PaperEquityRepository(session)
+        await equity_repository.record(
+            f"market:{symbol.strip().upper()}:{timestamp.isoformat()}",
+            broker,
+            captured_at=timestamp,
+            commit=False,
+        )
         await PaperPortfolioRepository(session).save(broker.snapshot_state(), commit=False)
         await session.commit()
+    history = getattr(request.app.state, "paper_equity_history", [])
+    history = equity_repository.cache_daily_snapshot(
+        history,
+        f"market:{symbol.strip().upper()}:{timestamp.isoformat()}",
+        broker,
+        captured_at=timestamp,
+    )
+    request.app.state.paper_equity_history = history
 
 
 class PaperTradeRequest(BaseModel):
@@ -230,6 +266,7 @@ async def fill_paper_trade(
     broker = getattr(request.app.state, "paper_broker", None)
     if broker is None:
         raise HTTPException(status_code=500, detail="paper broker is not initialized")
+    previous_execution_ids = {execution.id for execution in broker.executions}
     try:
         order = broker.fill_order(
             order_id,
@@ -242,12 +279,17 @@ async def fill_paper_trade(
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
     executions = broker.executions_for_orders({order.id})
-    await _save_fill_state(request, order, executions, broker)
+    new_executions = [
+        execution for execution in executions if execution.id not in previous_execution_ids
+    ]
+    await _save_fill_state(request, order, executions, broker, new_executions)
     portfolio = PortfolioManager.from_broker(broker).snapshot()
     execution = (
         broker.execution_by_idempotency_key(idempotency_key)
         if idempotency_key is not None
-        else executions[-1] if executions else None
+        else executions[-1]
+        if executions
+        else None
     )
     return {
         "order": _serialize_order(order),
@@ -290,7 +332,14 @@ async def _process_paper_market_update(
         raise HTTPException(status_code=409, detail=str(error)) from error
     changed_orders = [*match.triggered_orders, *match.cancelled_orders]
     executions = broker.executions_for_orders({order.id for order in match.triggered_orders})
-    await _save_market_update(request, changed_orders, executions, broker)
+    await _save_market_update(
+        request,
+        changed_orders,
+        executions,
+        broker,
+        symbol=payload.symbol,
+        timestamp=payload.timestamp,
+    )
     portfolio = PortfolioManager.from_broker(broker).snapshot()
     return {
         "symbol": payload.symbol.strip().upper(),

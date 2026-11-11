@@ -1,6 +1,7 @@
 import pandas as pd
 from trading.backtesting.engine import BacktestConfig, BacktestEngine
 from trading.backtesting.metrics import calculate_performance_metrics
+from trading.broker.paper_broker import PaperBroker
 from trading.performance.analytics import PerformanceAnalytics
 from trading.strategies.moving_average import MovingAverageCrossoverStrategy
 
@@ -38,3 +39,18 @@ def test_performance_analytics_aggregates_equity_and_trade_metrics() -> None:
     assert report["trade_count"] == 1
     assert report["max_drawdown"] < 0
     assert report["final_equity"] == result.ending_equity
+
+
+def test_paper_account_risk_metrics_use_recorded_daily_equity_history() -> None:
+    broker = PaperBroker(initial_cash=1_000)
+    history = [
+        {"captured_at": "2024-01-01T12:00:00Z", "equity": 1_000, "exposure": 0},
+        {"captured_at": "2024-01-02T12:00:00Z", "equity": 1_100, "exposure": 500},
+        {"captured_at": "2024-01-03T12:00:00Z", "equity": 900, "exposure": 400},
+    ]
+
+    report = PerformanceAnalytics.from_paper_broker(broker, history).snapshot()
+
+    assert report["history_observations"] == 3
+    assert abs(report["max_drawdown"] - (900 / 1_100 - 1)) < 1e-9
+    assert "sharpe_ratio" in report

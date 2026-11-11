@@ -38,6 +38,7 @@ from app.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.repositories.audit_logs import AuditLogRepository
 from app.repositories.market_data import MarketDataRepository
+from app.repositories.paper_equity import PaperEquityRepository
 from app.repositories.paper_executions import PaperExecutionRepository
 from app.repositories.paper_orders import PaperOrderRepository
 from app.repositories.paper_portfolio import PaperPortfolioRepository
@@ -105,12 +106,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 persisted_orders = []
                 persisted_executions = []
                 persisted_portfolio = None
+                equity_history = []
             else:
                 async with application.state.database_session_factory() as session:
                     market_repository = MarketDataRepository(session)
                     execution_repository = PaperExecutionRepository(session)
                     order_repository = PaperOrderRepository(session)
                     portfolio_repository = PaperPortfolioRepository(session)
+                    equity_repository = PaperEquityRepository(session)
                     persisted_bars = await market_repository.list_all()
                     persisted_orders = await order_repository.list_all()
                     persisted_executions = await execution_repository.list_all()
@@ -120,6 +123,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             application.state.paper_broker.restore_executions(persisted_executions)
             if persisted_portfolio is not None:
                 application.state.paper_broker.restore_state(persisted_portfolio)
+            if app_settings.app_env != "test":
+                async with application.state.database_session_factory() as session:
+                    equity_repository = PaperEquityRepository(session)
+                    await equity_repository.record(
+                        "paper-account-baseline",
+                        application.state.paper_broker,
+                        captured_at=datetime.now(UTC),
+                    )
+                    equity_history = await equity_repository.list_history()
+            application.state.paper_equity_history = equity_history
             yield
         finally:
             await application.state.redis_client.aclose()

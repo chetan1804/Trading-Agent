@@ -88,6 +88,19 @@ class PaperPortfolioRecord(Base):
     last_market_timestamp_by_symbol: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)
 
 
+class PaperEquitySnapshotRecord(Base):
+    __tablename__ = "paper_equity_snapshots"
+
+    event_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    captured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    equity: Mapped[float] = mapped_column(Float, nullable=False)
+    exposure: Mapped[float] = mapped_column(Float, nullable=False)
+    realized_pnl: Mapped[float] = mapped_column(Float, nullable=False)
+    unrealized_pnl: Mapped[float] = mapped_column(Float, nullable=False)
+
+
 class StrategyDecisionRecord(Base):
     __tablename__ = "strategy_decisions"
 

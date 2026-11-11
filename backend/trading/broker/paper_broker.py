@@ -55,6 +55,14 @@ class PaperBroker:
             for symbol, quantity in self.positions.items()
         )
 
+    @property
+    def unrealized_pnl(self) -> float:
+        return sum(
+            self.last_prices.get(symbol, 0.0) * quantity - self.position_cost_basis.get(symbol, 0.0)
+            for symbol, quantity in self.positions.items()
+            if quantity > 0
+        )
+
     def create_order(
         self,
         *,

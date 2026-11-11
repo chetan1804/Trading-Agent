@@ -14,7 +14,8 @@ async def dashboard_overview(request: Request) -> dict[str, object]:
         raise HTTPException(status_code=503, detail="paper account is unavailable")
 
     portfolio = PortfolioManager.from_broker(broker)
-    performance = PerformanceAnalytics.from_paper_broker(broker)
+    history = getattr(request.app.state, "paper_equity_history", [])
+    performance = PerformanceAnalytics.from_paper_broker(broker, history)
     summary = DashboardSummary(
         portfolio=portfolio,
         performance=performance,

@@ -52,6 +52,7 @@ def test_feature_engineering_api_endpoints_work() -> None:
     assert "sma_20" in payload["feature_columns"]
     assert payload["rows"][0]["close"] > 0
 
+
 def test_market_data_history_prefers_ingested_bars() -> None:
     app = create_app(Settings(enable_trading=False))
     client = TestClient(app)
@@ -159,7 +160,6 @@ def test_strategy_generation_uses_ingested_market_data() -> None:
     ]
 
 
-
 def test_strategy_api_endpoints_work() -> None:
     app = create_app(Settings(enable_trading=False))
     client = TestClient(app)
@@ -217,8 +217,7 @@ def test_ml_walk_forward_backtest_fits_only_before_test_windows() -> None:
     assert "worst_drawdown" in payload["summary"]["ml_probability"]
     assert all("metrics" in fold for fold in payload["folds"])
     assert all(
-        set(fold["comparison"]) == {"moving_average", "buy_and_hold"}
-        for fold in payload["folds"]
+        set(fold["comparison"]) == {"moving_average", "buy_and_hold"} for fold in payload["folds"]
     )
 
 
@@ -666,6 +665,11 @@ def test_performance_summary_api_endpoint_works() -> None:
     app = create_app(Settings(app_env="test", enable_trading=False))
     with TestClient(app) as client:
         app.state.paper_broker.cash = 105_000.0
+        app.state.paper_equity_history = [
+            {"captured_at": "2024-01-01T12:00:00Z", "equity": 100_000, "exposure": 0},
+            {"captured_at": "2024-01-02T12:00:00Z", "equity": 110_000, "exposure": 10_000},
+            {"captured_at": "2024-01-03T12:00:00Z", "equity": 105_000, "exposure": 0},
+        ]
         response = client.get("/api/performance/summary")
         assert response.status_code == 200
         payload = response.json()
@@ -674,4 +678,6 @@ def test_performance_summary_api_endpoint_works() -> None:
         assert payload["final_equity"] == 105_000.0
         assert payload["realized_pnl"] == 0
         assert payload["execution_count"] == 0
-        assert "sharpe_ratio" not in payload
+        assert payload["history_observations"] == 3
+        assert abs(payload["max_drawdown"] - (105_000 / 110_000 - 1)) < 1e-9
+        assert "sharpe_ratio" in payload
