@@ -27,6 +27,8 @@ npm run dev
 
 It opens at <http://localhost:5173> and reads dashboard and monitoring snapshots from `http://localhost:8001` by default. Set `VITE_API_URL` to the API origin when the backend is hosted elsewhere. The dashboard displays currency in INR and times in IST, refreshes every 30 seconds, and shows portfolio, individual recent paper executions with fill quantity, price, fees, execution time and fill-level slippage, pre-trade risk limits, model monitoring, alert snapshots, and current paper-account return and P&amp;L. It does not submit or fill orders.
 
+The [`notebooks/`](notebooks/README.md) directory contains seven reproducible research notebooks for data exploration, feature engineering, backtesting, ML evaluation, walk-forward validation, and portfolio accounting. They use synthetic data and the project’s production modules.
+
 The **AI Research** section accepts a symbol, optional market snapshot, headlines, and document excerpts, then calls `POST /api/ai/research`. The current assistant creates a deterministic local summary from the supplied inputs; it does not fetch external data or call an LLM. Prices in the brief are labeled INR. The result is informational and cannot place orders.
 
 `POST /api/ai/rag` accepts a query and a list of trusted document excerpts. Its lexical retrieval response includes source IDs (`document-1`, etc.), excerpt text, and relevance scores; answer text cites the IDs used. If no supplied excerpt matches query terms, it returns `no_relevant_sources` without presenting an unrelated excerpt as an answer. This is lightweight keyword retrieval, not an embedding model or an LLM, so review the cited source text directly.
