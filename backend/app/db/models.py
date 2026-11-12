@@ -70,6 +70,7 @@ class PaperExecutionRecord(Base):
     requested_quantity: Mapped[float | None] = mapped_column(Float)
     requested_fees: Mapped[float | None] = mapped_column(Float)
     idempotency_key: Mapped[str | None] = mapped_column(String(128))
+    realized_pnl: Mapped[float | None] = mapped_column(Float)
 
 
 class PaperPortfolioRecord(Base):

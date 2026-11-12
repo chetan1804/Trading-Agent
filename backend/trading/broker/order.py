@@ -23,6 +23,7 @@ class Execution:
     requested_quantity: float | None
     requested_fees: float | None
     idempotency_key: str | None = None
+    realized_pnl: float | None = None
     id: str = field(default_factory=lambda: f"exec-{uuid.uuid4().hex}")
 
 

@@ -40,12 +40,27 @@ class PerformanceAnalytics:
         """Build account metrics and derive risk metrics only from recorded history."""
         initial_cash = broker.initial_cash
         equity = broker.equity
+        exit_pnls = [
+            execution.realized_pnl
+            for execution in broker.executions
+            if execution.side == "SELL" and execution.realized_pnl is not None
+        ]
+        winning_exits = [value for value in exit_pnls if value > 0]
+        losing_exits = [value for value in exit_pnls if value < 0]
+        gross_profit = sum(winning_exits)
+        gross_loss = -sum(losing_exits)
         metrics: dict[str, Any] = {
             "total_return": equity / initial_cash - 1 if initial_cash > 0 else 0.0,
             "realized_pnl": broker.realized_pnl,
             "unrealized_pnl": broker.unrealized_pnl,
             "execution_count": len(broker.executions),
             "exit_fill_count": sum(item.side == "SELL" for item in broker.executions),
+            "realized_exit_fill_count": len(exit_pnls),
+            "winning_exit_fills": len(winning_exits),
+            "losing_exit_fills": len(losing_exits),
+            "win_rate": len(winning_exits) / len(exit_pnls) if exit_pnls else None,
+            "profit_factor": gross_profit / gross_loss if gross_loss else None,
+            "expectancy": sum(exit_pnls) / len(exit_pnls) if exit_pnls else None,
             "total_fees": sum(item.fees for item in broker.executions),
             "open_positions": sum(quantity > 0 for quantity in broker.positions.values()),
         }

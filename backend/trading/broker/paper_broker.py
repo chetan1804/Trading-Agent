@@ -328,6 +328,7 @@ class PaperBroker:
         if order.side == "SELL" and fill_quantity > self.positions.get(order.symbol, 0.0):
             raise ValueError("sell fill quantity exceeds the open paper position")
 
+        net_realized: float | None = None
         order.apply_fill(fill_quantity, adjusted_price)
         if order.side == "BUY":
             self.cash -= notional + fee
@@ -369,6 +370,7 @@ class PaperBroker:
                 requested_quantity=quantity,
                 requested_fees=fees,
                 idempotency_key=idempotency_key,
+                realized_pnl=net_realized,
             )
         )
         return order

@@ -13,7 +13,14 @@ type DashboardPayload = {
     total_value?: number;
     exposure?: number;
   };
-  performance?: Record<string, number>;
+  performance?: {
+    total_return?: number;
+    realized_pnl?: number;
+    unrealized_pnl?: number;
+    final_equity?: number;
+    win_rate?: number | null;
+    profit_factor?: number | null;
+  };
   execution?: {
     open_orders?: number;
     filled_orders?: number;
@@ -409,7 +416,8 @@ function App() {
           <div><strong>{formatMoney(performance.realized_pnl)}</strong><small>Realized P&amp;L</small></div>
           <div><strong>{formatMoney(performance.unrealized_pnl)}</strong><small>Unrealized P&amp;L</small></div>
           <div><strong>{formatMoney(performance.final_equity)}</strong><small>Current equity</small></div>
-          <p>Based on current paper account marks and recorded fills. Historical risk-adjusted performance requires an equity history.</p>
+          <div><strong>{performance.win_rate == null ? "—" : `${(performance.win_rate * 100).toFixed(1)}%`}</strong><small>Exit fill win rate · PF {performance.profit_factor == null ? "—" : performance.profit_factor.toFixed(2)}</small></div>
+          <p>Returns use current account marks. Exit win rate uses recorded sell-fill P&amp;L; historical risk metrics require daily equity history.</p>
         </section>
         <section className="risk-panel panel" aria-live="polite">
           <div className="panel-heading"><div><p className="eyebrow">Exposure controls</p><h3>Risk status</h3></div><span className={`monitoring-status ${risk?.status ?? "unavailable"}`}>{risk?.status ?? "unavailable"}</span></div>

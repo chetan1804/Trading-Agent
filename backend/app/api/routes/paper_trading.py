@@ -163,6 +163,7 @@ def _serialize_execution(execution: Execution) -> dict[str, object]:
         "quantity": execution.quantity,
         "price": execution.price,
         "fees": execution.fees,
+        "realized_pnl": execution.realized_pnl,
         "executed_at": execution.executed_at.isoformat(),
         "idempotency_key": execution.idempotency_key,
     }

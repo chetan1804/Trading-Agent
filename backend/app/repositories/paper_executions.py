@@ -28,6 +28,7 @@ class PaperExecutionRepository:
             "requested_quantity": execution.requested_quantity,
             "requested_fees": execution.requested_fees,
             "idempotency_key": execution.idempotency_key,
+            "realized_pnl": execution.realized_pnl,
         }
         await self.session.execute(
             insert(PaperExecutionRecord).values(**values).on_conflict_do_nothing()
@@ -61,6 +62,7 @@ class PaperExecutionRepository:
                     requested_quantity=record.requested_quantity,
                     requested_fees=record.requested_fees,
                     idempotency_key=record.idempotency_key,
+                    realized_pnl=record.realized_pnl,
                 )
             )
         return executions

@@ -678,6 +678,8 @@ def test_performance_summary_api_endpoint_works() -> None:
         assert payload["final_equity"] == 105_000.0
         assert payload["realized_pnl"] == 0
         assert payload["execution_count"] == 0
+        assert payload["win_rate"] is None
+        assert payload["profit_factor"] is None
         assert payload["history_observations"] == 3
         assert abs(payload["max_drawdown"] - (105_000 / 110_000 - 1)) < 1e-9
         assert "sharpe_ratio" in payload

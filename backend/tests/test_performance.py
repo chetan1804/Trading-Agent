@@ -54,3 +54,26 @@ def test_paper_account_risk_metrics_use_recorded_daily_equity_history() -> None:
     assert report["history_observations"] == 3
     assert abs(report["max_drawdown"] - (900 / 1_100 - 1)) < 1e-9
     assert "sharpe_ratio" in report
+
+
+def test_paper_account_reports_realized_exit_fill_quality() -> None:
+    broker = PaperBroker(initial_cash=10_000, fee_rate=0, slippage_bps=0)
+    entry = broker.create_order(symbol="DEMO", side="BUY", quantity=4)
+    broker.submit_order(entry, market_price=100)
+    broker.fill_order(entry.id, price=100)
+    winning_exit = broker.create_order(symbol="DEMO", side="SELL", quantity=2)
+    broker.submit_order(winning_exit, market_price=110)
+    broker.fill_order(winning_exit.id, price=110)
+    losing_exit = broker.create_order(symbol="DEMO", side="SELL", quantity=1)
+    broker.submit_order(losing_exit, market_price=90)
+    broker.fill_order(losing_exit.id, price=90)
+
+    report = PerformanceAnalytics.from_paper_broker(broker).snapshot()
+
+    assert [item.realized_pnl for item in broker.executions] == [None, 20, -10]
+    assert report["realized_exit_fill_count"] == 2
+    assert report["winning_exit_fills"] == 1
+    assert report["losing_exit_fills"] == 1
+    assert report["win_rate"] == 0.5
+    assert report["profit_factor"] == 2
+    assert report["expectancy"] == 5
