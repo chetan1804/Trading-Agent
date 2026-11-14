@@ -36,6 +36,7 @@ def app() -> FastAPI:
     application = create_app(Settings())
     application.state.database_engine = FakeDatabase()
     application.state.redis_client = FakeRedis()
+    application.state.database_session_factory = object()
     return application
 
 
@@ -54,7 +55,16 @@ async def test_readiness_requires_database_and_redis(app: FastAPI) -> None:
         response = await client.get("/health/ready")
 
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "checks": {"database": "ok", "redis": "ok"}}
+    assert response.json() == {
+        "status": "ok",
+        "checks": {
+            "database": "ok",
+            "redis": "ok",
+            "market_data": "ok",
+            "broker": "ok",
+            "model_service": "ok",
+        },
+    }
 
 
 @pytest.mark.asyncio
@@ -72,6 +82,12 @@ async def test_readiness_returns_unavailable_when_redis_is_down(app: FastAPI) ->
     assert response.status_code == 503
     assert response.json() == {
         "status": "unavailable",
-        "checks": {"database": "ok", "redis": "unavailable"},
+        "checks": {
+            "database": "ok",
+            "redis": "unavailable",
+            "market_data": "ok",
+            "broker": "ok",
+            "model_service": "ok",
+        },
     }
     assert "private connection details" not in response.text

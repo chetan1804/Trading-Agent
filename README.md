@@ -50,7 +50,7 @@ make test
 make lint
 ```
 
-`GET /health` checks API liveness. `GET /health/ready` checks PostgreSQL and Redis and returns 503 when either dependency is unavailable.
+`GET /health` checks API liveness. `GET /health/ready` checks PostgreSQL, Redis, market-data access (persisted bars with synthetic fallback), the paper broker adapter, and model-service configuration; it returns 503 when any required check is unavailable.
 
 ## Deployment
 

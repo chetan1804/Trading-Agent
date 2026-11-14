@@ -9,7 +9,7 @@ All routes below are relative to the base URL. Paths beginning with `/api` are s
 | Method | Path | Description | Access |
 | --- | --- | --- | --- |
 | `GET` | `/health` | Liveness check; returns `{"status":"ok"}`. | Public |
-| `GET` | `/health/ready` | Checks PostgreSQL and Redis; returns 503 if either is unavailable. | Public |
+| `GET` | `/health/ready` | Checks PostgreSQL, Redis, market-data access (stored bars with synthetic fallback), the paper broker adapter, and model-service configuration; returns 503 if any check is unavailable. | Public |
 
 Health routes are outside the `/api` rate limiter.
 
