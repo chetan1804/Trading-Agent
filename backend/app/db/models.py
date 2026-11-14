@@ -28,6 +28,24 @@ class MarketBar(Base):
     volume: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
 
+class NewsArticle(Base):
+    __tablename__ = "news_articles"
+    __table_args__ = (UniqueConstraint("content_hash", name="uq_news_articles_content_hash"),)
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(128), nullable=False)
+    headline: Mapped[str] = mapped_column(String(1000), nullable=False)
+    published_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
+    sentiment: Mapped[str] = mapped_column(String(16), nullable=False)
+    sentiment_score: Mapped[float] = mapped_column(Float, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
 class PaperOrderRecord(Base):
     __tablename__ = "paper_orders"
     __table_args__ = (UniqueConstraint("idempotency_key", name="uq_paper_orders_idempotency_key"),)

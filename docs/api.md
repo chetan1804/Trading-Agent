@@ -24,8 +24,12 @@ Health routes are outside the `/api` rate limiter.
 | `GET` | `/api/market-data/stored` | Cached bars currently available to this API process. Query: `symbol`, `limit` (1–500, default 50). | No route key |
 | `POST` | `/api/market-data/ingest` | Validate, persist, and cache supplied OHLCV bars. | Key when enabled |
 | `GET` | `/api/features/engineer` | Latest engineered feature rows. Query: `symbol`, `limit` (1–200, default 20). | No route key |
+| `POST` | `/api/news/ingest` | Normalize supplied headlines, deduplicate them, score lexical sentiment, and persist the results. Accepts 1–500 articles. | Key when enabled |
+| `GET` | `/api/news` | Recent persisted headlines and sentiment. Query: required `symbol`, `limit` (1–200, default 20). | No route key |
 
 Market-data bars use timestamps and `open`, `high`, `low`, `close`, and `volume`. Ingestion normalizes naive timestamps as UTC, validates OHLC constraints, and upserts by symbol and timestamp. The `stored` endpoint returns the process cache; PostgreSQL is the durable store.
+
+News ingestion only processes caller-supplied articles; it does not connect to external feeds. Duplicate detection uses normalized symbol, source, and headline. Sentiment uses the local keyword analyzer; confidence is the absolute sentiment score, not a calibrated probability. Apply migration `20261114_0015` before using the news endpoints.
 
 Example ingestion request:
 

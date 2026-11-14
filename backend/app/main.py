@@ -29,6 +29,7 @@ from app.api.routes.health import router as health_router
 from app.api.routes.market_data import router as market_data_router
 from app.api.routes.ml import router as ml_router
 from app.api.routes.monitoring import router as monitoring_router
+from app.api.routes.news import router as news_router
 from app.api.routes.paper_trading import router as paper_trading_router
 from app.api.routes.performance import router as performance_router
 from app.api.routes.portfolio import router as portfolio_router
@@ -266,6 +267,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application.include_router(ai_router)
     application.include_router(agents_router)
     application.include_router(monitoring_router)
+    application.include_router(news_router)
     application.include_router(deployment_router)
     application.include_router(broker_router)
     application.include_router(performance_router)
