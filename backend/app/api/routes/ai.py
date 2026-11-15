@@ -14,9 +14,15 @@ class AIResearchRequest(BaseModel):
     documents: list[str] = Field(default_factory=list)
 
 
+class RAGSource(BaseModel):
+    source_id: str = Field(..., min_length=1, max_length=128)
+    text: str = Field(..., min_length=1, max_length=100_000)
+
+
 class RAGRequest(BaseModel):
     query: str = Field(..., min_length=1)
-    documents: list[str] = Field(default_factory=list)
+    documents: list[str] = Field(default_factory=list, max_length=100)
+    sources: list[RAGSource] = Field(default_factory=list, max_length=100)
 
 
 class SentimentRequest(BaseModel):
@@ -51,4 +57,8 @@ async def ai_sentiment(request: SentimentRequest) -> dict[str, object]:
 @router.post("/ai/rag")
 async def ai_rag(request: RAGRequest) -> dict[str, object]:
     assistant = RAGResearchAssistant()
-    return assistant.answer(query=request.query, documents=request.documents)
+    return assistant.answer(
+        query=request.query,
+        documents=request.documents,
+        sources=[source.model_dump() for source in request.sources],
+    )
