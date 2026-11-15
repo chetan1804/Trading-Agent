@@ -150,12 +150,14 @@ Market updates match existing orders only; they do not create orders. Bar timest
 | `POST` | `/api/ai/research` | Deterministic summary of caller-supplied snapshot, headlines, and excerpts. | No route key |
 | `POST` | `/api/ai/sentiment` | Rule-based sentiment summary of supplied headlines. | No route key |
 | `POST` | `/api/ai/rag` | Chunked lexical retrieval with citations for supplied document excerpts or source objects. | No route key |
-| `POST` | `/api/agents/run` | Deterministic research workflow over caller-supplied inputs. | No route key |
+| `POST` | `/api/agents/run` | Deterministic research workflow returning supplied data, indicators, observations, risks, uncertainties, sources, and a non-binding analysis. | No route key |
 | `GET` | `/api/audit-logs` | Recent write-request audit metadata. Query: `limit` (1–500, default 100). | Key when enabled |
 | `GET` | `/api/broker/status` | Configured broker mode and live-trading status. | No route key |
 | `GET` | `/api/deployment/status` | Runtime configuration and deployment readiness summary. | No route key |
 
 For `/api/ai/rag`, `documents` remains a list of strings with generated IDs (`document-1`, etc.). Alternatively, provide `sources` as objects containing a stable caller-assigned `source_id` and `text`. Long sources are split into overlapping chunks, ranked using lexical inverse-document-frequency scores, and returned with chunk indexes and cited source IDs. Retrieval is local and lexical; it does not use embeddings or an LLM.
+
+`/api/agents/run` accepts the same optional `sources` objects alongside `documents`. The report preserves retrieved source IDs and reports which numeric snapshot fields were usable. It flags missing or invalid inputs and explicitly states that it does not check account-level risk limits.
 
 AI and agent endpoints do not fetch external news, call an LLM, approve trades, or submit orders. Audit records contain request metadata, not request bodies, API keys, or other credentials.
 
