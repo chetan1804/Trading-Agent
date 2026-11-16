@@ -1,6 +1,8 @@
+import pandas as pd
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from trading.agents.orchestrator import MarketAgent
+from trading.features.feature_pipeline import engineer_features
 
 from app.repositories.news import NewsRepository
 
@@ -25,20 +27,37 @@ class AgentRunRequest(BaseModel):
 async def run_agent(payload: AgentRunRequest, request: Request) -> dict[str, object]:
     """Run research with explicit inputs, filling missing market/news context locally."""
     symbol = payload.symbol.strip().upper()
-    snapshot = dict(payload.market_snapshot)
+    snapshot: dict[str, object] = {}
     store = getattr(request.app.state, "market_data_store", {})
     bars = store.get(symbol, [])
-    if bars and not snapshot:
-        latest = bars[-1]
-        previous = bars[-2] if len(bars) > 1 else None
-        close = float(latest["close"])
+    if bars:
+        recent_bars = pd.DataFrame(bars[-300:])
+        recent_bars["symbol"] = symbol
+        features = engineer_features(recent_bars)
+        latest = features.iloc[-1]
+        previous_close = float(features.iloc[-2]["close"]) if len(features) > 1 else None
         snapshot = {
-            "price": close,
+            "price": float(latest["close"]),
             "volume": float(latest["volume"]),
-            "timestamp": latest["timestamp"],
+            "timestamp": latest["timestamp"].isoformat(),
         }
-        if previous and float(previous["close"]) != 0:
-            snapshot["change_pct"] = (close / float(previous["close"]) - 1) * 100
+        if previous_close:
+            snapshot["change_pct"] = (float(latest["close"]) / previous_close - 1) * 100
+        feature_fields = {
+            "rsi": "rsi_14",
+            "macd": "macd_line",
+            "sma_20": "sma_20",
+            "sma_50": "sma_50",
+            "ema_20": "ema_20",
+            "atr": "atr_14",
+            "volatility": "rolling_volatility_20",
+        }
+        for output_name, feature_name in feature_fields.items():
+            value = latest[feature_name]
+            if pd.notna(value):
+                snapshot[output_name] = float(value)
+
+    snapshot.update(payload.market_snapshot)
 
     headlines = list(payload.news)
     if not headlines:
@@ -58,7 +77,13 @@ async def run_agent(payload: AgentRunRequest, request: Request) -> dict[str, obj
         research_sources=[source.model_dump() for source in payload.sources],
     )
     result["data_used"]["market_data_source"] = (
-        "caller" if payload.market_snapshot else "stored_bars" if bars else "unavailable"
+        "caller+stored_bars"
+        if payload.market_snapshot and bars
+        else "caller"
+        if payload.market_snapshot
+        else "stored_bars"
+        if bars
+        else "unavailable"
     )
     result["data_used"]["news_source"] = (
         "caller" if payload.news else "stored_news" if headlines else "unavailable"
