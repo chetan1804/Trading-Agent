@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import math
 from typing import Any
 
@@ -83,6 +84,23 @@ class MarketAgent:
             )
         if "price" not in snapshot or parsed["price"] is None:
             data_gaps.append("A valid market price was not supplied.")
+        freshness = self._assess_freshness(snapshot.get("timestamp"))
+        if freshness["status"] == "missing":
+            data_gaps.append(
+                "Market data timestamp is missing; its freshness cannot be assessed."
+            )
+        elif freshness["status"] == "unknown":
+            data_gaps.append(
+                "Market data timestamp is invalid or lacks a timezone; freshness is unknown."
+            )
+        elif freshness["status"] == "older_than_24h":
+            data_gaps.append(
+                "Market data timestamp is more than 24 hours old; check freshness for the bar interval."
+            )
+        elif freshness["status"] == "future_timestamp":
+            data_gaps.append(
+                "Market data timestamp is in the future; verify the source clock and data."
+            )
         indicators = {key: parsed[key] for key in indicator_fields if parsed[key] is not None}
         if parsed["change_pct"] is None:
             observations = [
@@ -143,6 +161,7 @@ class MarketAgent:
                 "market_snapshot": {
                     key: value for key, value in parsed.items() if value is not None
                 },
+                "market_data_freshness": freshness,
                 "indicators": indicators,
                 "headline_count": headline_count,
                 "research_source_count": len(sources),
@@ -213,6 +232,28 @@ class MarketAgent:
                 "forecast or a standalone trading rule."
             )
         return {"observations": observations, "risks": risks}
+
+    @staticmethod
+    def _assess_freshness(timestamp: object) -> dict[str, Any]:
+        """Report timestamp age; the 24-hour marker is a review cue, not a bar-interval rule."""
+        if timestamp is None or timestamp == "":
+            return {"timestamp": None, "age_hours": None, "status": "missing"}
+        if not isinstance(timestamp, str):
+            return {"timestamp": str(timestamp), "age_hours": None, "status": "unknown"}
+        try:
+            parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            return {"timestamp": timestamp, "age_hours": None, "status": "unknown"}
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            return {"timestamp": timestamp, "age_hours": None, "status": "unknown"}
+        age_hours = (datetime.now(UTC) - parsed.astimezone(UTC)).total_seconds() / 3600
+        if age_hours < 0:
+            status = "future_timestamp"
+        elif age_hours > 24:
+            status = "older_than_24h"
+        else:
+            status = "within_24h"
+        return {"timestamp": timestamp, "age_hours": round(age_hours, 2), "status": status}
 
     @staticmethod
     def _finite_number(value: object) -> float | None:
