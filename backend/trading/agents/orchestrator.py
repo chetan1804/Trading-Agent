@@ -100,6 +100,8 @@ class MarketAgent:
                 + ", ".join(f"{key}={value:g}" for key, value in sorted(indicators.items()))
                 + "."
             )
+        technical_read = self._interpret_indicators(indicators, price)
+        observations.extend(technical_read["observations"])
         if headline_count:
             observations.append(
                 f"The supplied headlines have {sentiment['sentiment']} lexical sentiment "
@@ -146,8 +148,9 @@ class MarketAgent:
                 "research_source_count": len(sources),
             },
             "indicators": indicators,
+            "technical_read": technical_read,
             "observations": observations,
-            "risks": [
+            "risks": technical_read["risks"] + [
                 "This workflow does not execute account-level risk checks.",
                 "This analysis is informational and does not approve or submit an order.",
             ],
@@ -164,6 +167,52 @@ class MarketAgent:
                 "news_count": headline_count,
             },
         }
+
+    @staticmethod
+    def _interpret_indicators(
+        indicators: dict[str, float], price: float | None
+    ) -> dict[str, list[str]]:
+        """Describe common indicator thresholds as heuristics, without producing a trade signal."""
+        observations: list[str] = []
+        risks: list[str] = []
+        rsi = indicators.get("rsi")
+        if rsi is not None:
+            if rsi >= 70:
+                observations.append("RSI is in the conventional overbought zone (70 or higher).")
+                risks.append("Elevated RSI can reflect strong momentum as well as a stretched move.")
+            elif rsi <= 30:
+                observations.append("RSI is in the conventional oversold zone (30 or lower).")
+                risks.append("Low RSI does not establish that a decline has ended.")
+            else:
+                observations.append("RSI is between the conventional 30 and 70 thresholds.")
+
+        fast_sma, slow_sma = indicators.get("sma_20"), indicators.get("sma_50")
+        if fast_sma is not None and slow_sma is not None:
+            if fast_sma > slow_sma:
+                observations.append("SMA 20 is above SMA 50, a positive moving-average alignment.")
+            elif fast_sma < slow_sma:
+                observations.append("SMA 20 is below SMA 50, a negative moving-average alignment.")
+            else:
+                observations.append("SMA 20 and SMA 50 are equal.")
+
+        macd = indicators.get("macd")
+        if macd is not None:
+            observations.append(
+                f"MACD is {'above' if macd > 0 else 'below' if macd < 0 else 'at'} its zero line."
+            )
+
+        atr = indicators.get("atr")
+        if atr is not None and price is not None and price > 0:
+            atr_pct = atr / price * 100
+            observations.append(f"ATR is {atr_pct:.2f}% of the supplied price.")
+            risks.append("ATR describes recent price range; it does not predict the next move.")
+
+        if indicators:
+            observations.append(
+                "These threshold readings are descriptive heuristics; they are not a validated "
+                "forecast or a standalone trading rule."
+            )
+        return {"observations": observations, "risks": risks}
 
     @staticmethod
     def _finite_number(value: object) -> float | None:
