@@ -129,6 +129,18 @@ class MarketAgent:
             )
         technical_read = self._interpret_indicators(indicators, price)
         observations.extend(technical_read["observations"])
+        confluence = self._assess_confluence(
+            change_pct=change_pct,
+            price=price,
+            indicators=indicators,
+            headline_sentiment=str(sentiment["sentiment"]),
+            headline_count=headline_count,
+        )
+        if confluence["status"] == "mixed":
+            observations.append(
+                "Supplied directional inputs conflict; consider the evidence separately rather "
+                "than treating it as a unified market view."
+            )
         if headline_count:
             observations.append(
                 f"The supplied headlines have {sentiment['sentiment']} lexical sentiment "
@@ -177,6 +189,7 @@ class MarketAgent:
             },
             "indicators": indicators,
             "technical_read": technical_read,
+            "confluence": confluence,
             "observations": observations,
             "risks": technical_read["risks"] + [
                 "This workflow does not execute account-level risk checks.",
@@ -241,6 +254,50 @@ class MarketAgent:
                 "forecast or a standalone trading rule."
             )
         return {"observations": observations, "risks": risks}
+
+    @staticmethod
+    def _assess_confluence(
+        *,
+        change_pct: float | None,
+        price: float | None,
+        indicators: dict[str, float],
+        headline_sentiment: str,
+        headline_count: int,
+    ) -> dict[str, Any]:
+        """Summarize directional evidence while keeping each input visible and unweighted."""
+        bullish: list[str] = []
+        bearish: list[str] = []
+        if change_pct is not None and change_pct != 0:
+            (bullish if change_pct > 0 else bearish).append("price_change")
+        for key, label in (("sma_20", "sma_20"), ("sma_50", "sma_50")):
+            average = indicators.get(key)
+            if price is not None and average is not None and price != average:
+                evidence = f"price_vs_{label}"
+                (bullish if price > average else bearish).append(evidence)
+        fast_sma, slow_sma = indicators.get("sma_20"), indicators.get("sma_50")
+        if fast_sma is not None and slow_sma is not None and fast_sma != slow_sma:
+            (bullish if fast_sma > slow_sma else bearish).append("sma_20_vs_sma_50")
+        macd = indicators.get("macd")
+        if macd is not None and macd != 0:
+            (bullish if macd > 0 else bearish).append("macd_zero_line")
+        if headline_count and headline_sentiment in {"bullish", "bearish"}:
+            (bullish if headline_sentiment == "bullish" else bearish).append("headline_sentiment")
+
+        status = (
+            "mixed"
+            if bullish and bearish
+            else "bullish_only"
+            if bullish
+            else "bearish_only"
+            if bearish
+            else "no_directional_evidence"
+        )
+        return {
+            "status": status,
+            "method": "unweighted_descriptive",
+            "bullish_evidence": bullish,
+            "bearish_evidence": bearish,
+        }
 
     @staticmethod
     def _assess_freshness(
