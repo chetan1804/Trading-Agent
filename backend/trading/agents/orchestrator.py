@@ -34,6 +34,7 @@ class MarketAgent:
         price = parsed["price"]
         change_pct = parsed["change_pct"]
         volume = parsed["volume"]
+        bar_interval_seconds = self._finite_number(snapshot.get("bar_interval_seconds"))
         headline_count = len(news or [])
 
         if change_pct is None:
@@ -84,7 +85,15 @@ class MarketAgent:
             )
         if "price" not in snapshot or parsed["price"] is None:
             data_gaps.append("A valid market price was not supplied.")
-        freshness = self._assess_freshness(snapshot.get("timestamp"))
+        if (
+            snapshot.get("bar_interval_seconds") is not None
+            and (bar_interval_seconds is None or bar_interval_seconds <= 0)
+        ):
+            data_gaps.append("Bar interval is invalid; using the default freshness review window.")
+            bar_interval_seconds = None
+        freshness = self._assess_freshness(
+            snapshot.get("timestamp"), bar_interval_seconds=bar_interval_seconds
+        )
         if freshness["status"] == "missing":
             data_gaps.append(
                 "Market data timestamp is missing; its freshness cannot be assessed."
@@ -93,9 +102,9 @@ class MarketAgent:
             data_gaps.append(
                 "Market data timestamp is invalid or lacks a timezone; freshness is unknown."
             )
-        elif freshness["status"] == "older_than_24h":
+        elif freshness["status"] == "older_than_threshold":
             data_gaps.append(
-                "Market data timestamp is more than 24 hours old; check freshness for the bar interval."
+                "Market data timestamp exceeds the freshness review window for the inferred bar interval."
             )
         elif freshness["status"] == "future_timestamp":
             data_gaps.append(
@@ -234,26 +243,56 @@ class MarketAgent:
         return {"observations": observations, "risks": risks}
 
     @staticmethod
-    def _assess_freshness(timestamp: object) -> dict[str, Any]:
-        """Report timestamp age; the 24-hour marker is a review cue, not a bar-interval rule."""
+    def _assess_freshness(
+        timestamp: object, *, bar_interval_seconds: float | None = None
+    ) -> dict[str, Any]:
+        """Report age against three inferred intervals, or a 24-hour fallback window."""
+        threshold_hours = (
+            3 * bar_interval_seconds / 3600 if bar_interval_seconds is not None else 24.0
+        )
         if timestamp is None or timestamp == "":
-            return {"timestamp": None, "age_hours": None, "status": "missing"}
+            return {
+                "timestamp": None,
+                "age_hours": None,
+                "threshold_hours": round(threshold_hours, 2),
+                "status": "missing",
+            }
         if not isinstance(timestamp, str):
-            return {"timestamp": str(timestamp), "age_hours": None, "status": "unknown"}
+            return {
+                "timestamp": str(timestamp),
+                "age_hours": None,
+                "threshold_hours": round(threshold_hours, 2),
+                "status": "unknown",
+            }
         try:
             parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
         except ValueError:
-            return {"timestamp": timestamp, "age_hours": None, "status": "unknown"}
+            return {
+                "timestamp": timestamp,
+                "age_hours": None,
+                "threshold_hours": round(threshold_hours, 2),
+                "status": "unknown",
+            }
         if parsed.tzinfo is None or parsed.utcoffset() is None:
-            return {"timestamp": timestamp, "age_hours": None, "status": "unknown"}
+            return {
+                "timestamp": timestamp,
+                "age_hours": None,
+                "threshold_hours": round(threshold_hours, 2),
+                "status": "unknown",
+            }
         age_hours = (datetime.now(UTC) - parsed.astimezone(UTC)).total_seconds() / 3600
         if age_hours < 0:
             status = "future_timestamp"
-        elif age_hours > 24:
-            status = "older_than_24h"
+        elif age_hours > threshold_hours:
+            status = "older_than_threshold"
         else:
-            status = "within_24h"
-        return {"timestamp": timestamp, "age_hours": round(age_hours, 2), "status": status}
+            status = "within_threshold"
+        return {
+            "timestamp": timestamp,
+            "age_hours": round(age_hours, 2),
+            "threshold_hours": round(threshold_hours, 2),
+            "status": status,
+        }
 
     @staticmethod
     def _finite_number(value: object) -> float | None:

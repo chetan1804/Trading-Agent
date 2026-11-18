@@ -33,6 +33,9 @@ async def run_agent(payload: AgentRunRequest, request: Request) -> dict[str, obj
     if bars:
         recent_bars = pd.DataFrame(bars[-300:])
         recent_bars["symbol"] = symbol
+        timestamps = pd.to_datetime(recent_bars["timestamp"], utc=True).sort_values()
+        interval_seconds = timestamps.diff().dt.total_seconds()
+        typical_interval = interval_seconds[interval_seconds > 0].median()
         features = engineer_features(recent_bars)
         latest = features.iloc[-1]
         previous_close = float(features.iloc[-2]["close"]) if len(features) > 1 else None
@@ -41,6 +44,8 @@ async def run_agent(payload: AgentRunRequest, request: Request) -> dict[str, obj
             "volume": float(latest["volume"]),
             "timestamp": latest["timestamp"].isoformat(),
         }
+        if pd.notna(typical_interval):
+            snapshot["bar_interval_seconds"] = float(typical_interval)
         if previous_close:
             snapshot["change_pct"] = (float(latest["close"]) / previous_close - 1) * 100
         feature_fields = {
