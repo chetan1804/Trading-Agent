@@ -235,9 +235,9 @@ class SignalModelTrainer:
         classes = list(model.classes_)
         if 1 not in classes:
             raise ValueError("registered model does not support positive-class probabilities")
-        probability = model.predict_proba(
-            SignalModelTrainer._feature_row(feature_names, features)
-        )[0][classes.index(1)]
+        probability = model.predict_proba(SignalModelTrainer._feature_row(feature_names, features))[
+            0
+        ][classes.index(1)]
         return float(probability)
 
     @staticmethod

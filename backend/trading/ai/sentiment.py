@@ -59,7 +59,9 @@ class SentimentAnalyzer:
     )
 
     def analyze(self, headlines: list[str] | None = None) -> dict[str, object]:
-        items = [headline.strip() for headline in (headlines or []) if headline and headline.strip()]
+        items = [
+            headline.strip() for headline in (headlines or []) if headline and headline.strip()
+        ]
         if not items:
             return {"score": 0.0, "sentiment": "neutral", "signals": []}
 

@@ -58,8 +58,7 @@ class MarketResearchAssistant:
 
         if not news_items:
             risks.append(
-                "No fresh headline catalysts are available, so sentiment remains "
-                "less certain."
+                "No fresh headline catalysts are available, so sentiment remains less certain."
             )
 
         highlights = [

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import math
+from datetime import UTC, datetime
 from typing import Any
 
 from trading.ai.rag import RAGResearchAssistant
@@ -85,9 +85,8 @@ class MarketAgent:
             )
         if "price" not in snapshot or parsed["price"] is None:
             data_gaps.append("A valid market price was not supplied.")
-        if (
-            snapshot.get("bar_interval_seconds") is not None
-            and (bar_interval_seconds is None or bar_interval_seconds <= 0)
+        if snapshot.get("bar_interval_seconds") is not None and (
+            bar_interval_seconds is None or bar_interval_seconds <= 0
         ):
             data_gaps.append("Bar interval is invalid; using the default freshness review window.")
             bar_interval_seconds = None
@@ -95,16 +94,14 @@ class MarketAgent:
             snapshot.get("timestamp"), bar_interval_seconds=bar_interval_seconds
         )
         if freshness["status"] == "missing":
-            data_gaps.append(
-                "Market data timestamp is missing; its freshness cannot be assessed."
-            )
+            data_gaps.append("Market data timestamp is missing; its freshness cannot be assessed.")
         elif freshness["status"] == "unknown":
             data_gaps.append(
                 "Market data timestamp is invalid or lacks a timezone; freshness is unknown."
             )
         elif freshness["status"] == "older_than_threshold":
             data_gaps.append(
-                "Market data timestamp exceeds the freshness review window for the inferred bar interval."
+                "Market data timestamp exceeds the interval-based freshness review window."
             )
         elif freshness["status"] == "future_timestamp":
             data_gaps.append(
@@ -191,7 +188,8 @@ class MarketAgent:
             "technical_read": technical_read,
             "confluence": confluence,
             "observations": observations,
-            "risks": technical_read["risks"] + [
+            "risks": technical_read["risks"]
+            + [
                 "This workflow does not execute account-level risk checks.",
                 "This analysis is informational and does not approve or submit an order.",
             ],
@@ -220,7 +218,7 @@ class MarketAgent:
         if rsi is not None:
             if rsi >= 70:
                 observations.append("RSI is in the conventional overbought zone (70 or higher).")
-                risks.append("Elevated RSI can reflect strong momentum as well as a stretched move.")
+                risks.append("Elevated RSI can reflect momentum as well as a stretched move.")
             elif rsi <= 30:
                 observations.append("RSI is in the conventional oversold zone (30 or lower).")
                 risks.append("Low RSI does not establish that a decline has ended.")

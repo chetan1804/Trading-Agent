@@ -91,9 +91,7 @@ def test_limit_fill_respects_limit_price_after_slippage() -> None:
     )
     broker.submit_order(order, market_price=95)
 
-    match = broker.process_market_bar(
-        symbol="DEMO", open_price=90, high=96, low=89, close=93
-    )
+    match = broker.process_market_bar(symbol="DEMO", open_price=90, high=96, low=89, close=93)
 
     assert match.triggered_orders == [order]
     assert order.status is OrderStatus.FILLED
@@ -124,9 +122,7 @@ def test_oco_stop_fill_cancels_take_profit_even_when_both_levels_hit() -> None:
     broker.submit_order(target, market_price=100)
     broker.submit_order(stop, market_price=100)
 
-    match = broker.process_market_bar(
-        symbol="DEMO", open_price=100, high=115, low=90, close=105
-    )
+    match = broker.process_market_bar(symbol="DEMO", open_price=100, high=115, low=90, close=105)
 
     assert match.triggered_orders == [stop]
     assert match.cancelled_orders == [target]

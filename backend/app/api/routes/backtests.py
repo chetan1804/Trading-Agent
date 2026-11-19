@@ -68,9 +68,7 @@ async def run_backtest(
     feature_frame = engineer_features(market_data)
     timestamps = pd.to_datetime(feature_frame["timestamp"], utc=True)
     if start_date:
-        feature_frame = feature_frame.loc[
-            timestamps >= pd.Timestamp(start_date, tz="UTC")
-        ]
+        feature_frame = feature_frame.loc[timestamps >= pd.Timestamp(start_date, tz="UTC")]
         timestamps = pd.to_datetime(feature_frame["timestamp"], utc=True)
     if end_date:
         end_exclusive = pd.Timestamp(end_date + timedelta(days=1), tz="UTC")
@@ -209,9 +207,7 @@ async def walk_forward_backtest(
         available = pd.concat([training, validation], ignore_index=True)
         training_frame = training.reset_index(drop=True)
         labels = (
-            next_period_direction(available["close"])
-            .iloc[: len(training)]
-            .reset_index(drop=True)
+            next_period_direction(available["close"]).iloc[: len(training)].reset_index(drop=True)
         )
         feature_names = [
             column
@@ -224,9 +220,7 @@ async def walk_forward_backtest(
         fit_rows = training_frame.loc[usable]
         fit_labels = labels.loc[usable].astype(int)
         artifact = SignalModelTrainer().fit_artifact(
-            features={
-                column: fit_rows[column].astype(float).tolist() for column in feature_names
-            },
+            features={column: fit_rows[column].astype(float).tolist() for column in feature_names},
             labels=fit_labels.tolist(),
             model_type=model_type,
         )

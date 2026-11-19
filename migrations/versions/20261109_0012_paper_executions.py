@@ -31,9 +31,7 @@ def upgrade() -> None:
         sa.Column("idempotency_key", sa.String(length=128), nullable=True),
         sa.ForeignKeyConstraint(["order_id"], ["paper_orders.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id", name="pk_paper_executions"),
-        sa.UniqueConstraint(
-            "idempotency_key", name="uq_paper_executions_idempotency_key"
-        ),
+        sa.UniqueConstraint("idempotency_key", name="uq_paper_executions_idempotency_key"),
     )
     op.create_index("ix_paper_executions_order_id", "paper_executions", ["order_id"])
     op.create_index("ix_paper_executions_symbol", "paper_executions", ["symbol"])
