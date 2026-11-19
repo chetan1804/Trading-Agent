@@ -286,35 +286,35 @@ def test_paper_market_update_triggers_submitted_stop_order(monkeypatch) -> None:
     from app.api.routes import paper_trading
     from trading.broker.order import OrderStatus
 
-    async def skip_persistence(request, orders, executions, broker) -> None:
+    async def skip_persistence(request, orders, executions, broker, symbol, timestamp) -> None:
         return None
 
     monkeypatch.setattr(paper_trading, "_save_market_update", skip_persistence)
     app = create_app(Settings(app_env="test", enable_trading=False))
-    broker = app.state.paper_broker
-    broker.risk_manager = None
-    entry = broker.create_order(symbol="DEMO", side="BUY", quantity=10)
-    broker.submit_order(entry, market_price=100)
-    broker.fill_order(entry.id, price=100, timestamp=datetime(2024, 1, 2, tzinfo=UTC))
-    stop = broker.create_order(
-        symbol="DEMO",
-        side="SELL",
-        quantity=10,
-        order_type="STOP",
-        stop_price=95,
-        oco_group="position-1",
-    )
-    target = broker.create_order(
-        symbol="DEMO",
-        side="SELL",
-        quantity=10,
-        order_type="LIMIT",
-        limit_price=110,
-        oco_group="position-1",
-    )
-    broker.submit_order(stop, market_price=100)
-    broker.submit_order(target, market_price=100)
     with TestClient(app) as client:
+        broker = app.state.paper_broker
+        broker.risk_manager = None
+        entry = broker.create_order(symbol="DEMO", side="BUY", quantity=10)
+        broker.submit_order(entry, market_price=100)
+        broker.fill_order(entry.id, price=100, timestamp=datetime(2024, 1, 2, tzinfo=UTC))
+        stop = broker.create_order(
+            symbol="DEMO",
+            side="SELL",
+            quantity=10,
+            order_type="STOP",
+            stop_price=95,
+            oco_group="position-1",
+        )
+        target = broker.create_order(
+            symbol="DEMO",
+            side="SELL",
+            quantity=10,
+            order_type="LIMIT",
+            limit_price=110,
+            oco_group="position-1",
+        )
+        broker.submit_order(stop, market_price=100)
+        broker.submit_order(target, market_price=100)
         response = client.post(
             "/api/paper-trading/market-update",
             json={
@@ -359,16 +359,16 @@ def test_paper_market_update_triggers_submitted_stop_order(monkeypatch) -> None:
 def test_paper_fill_api_uses_execution_idempotency_key(monkeypatch) -> None:
     from app.api.routes import paper_trading
 
-    async def skip_persistence(request, order, executions, broker) -> None:
+    async def skip_persistence(request, order, executions, broker, new_executions) -> None:
         return None
 
     monkeypatch.setattr(paper_trading, "_save_fill_state", skip_persistence)
     app = create_app(Settings(app_env="test", enable_trading=False))
-    broker = app.state.paper_broker
-    broker.risk_manager = None
-    order = broker.create_order(symbol="DEMO", side="BUY", quantity=10)
-    broker.submit_order(order, market_price=100)
     with TestClient(app) as client:
+        broker = app.state.paper_broker
+        broker.risk_manager = None
+        order = broker.create_order(symbol="DEMO", side="BUY", quantity=10)
+        broker.submit_order(order, market_price=100)
         headers = {"Idempotency-Key": "fill-request-123"}
         body = {"price": 100, "quantity": 4}
 
