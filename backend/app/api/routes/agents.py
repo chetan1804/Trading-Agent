@@ -65,12 +65,27 @@ async def run_agent(payload: AgentRunRequest, request: Request) -> dict[str, obj
     snapshot.update(payload.market_snapshot)
 
     headlines = list(payload.news)
+    news_evidence: list[dict[str, object]] = [
+        {"headline": headline, "source": "caller_supplied", "published_at": None}
+        for headline in headlines
+    ]
     if not headlines:
         session_factory = getattr(request.app.state, "database_session_factory", None)
         if session_factory is not None:
             async with session_factory() as session:
                 articles = await NewsRepository(session).list_recent(symbol, 20)
             headlines = [item["headline"] for item in articles]
+            news_evidence = [
+                {
+                    "headline": item["headline"],
+                    "source": item["source"],
+                    "published_at": item["published_at"],
+                    "sentiment": item["sentiment"],
+                    "score": item["score"],
+                    "confidence": item["confidence"],
+                }
+                for item in articles
+            ]
 
     agent = MarketAgent()
     result = agent.run(
@@ -93,4 +108,5 @@ async def run_agent(payload: AgentRunRequest, request: Request) -> dict[str, obj
     result["data_used"]["news_source"] = (
         "caller" if payload.news else "stored_news" if headlines else "unavailable"
     )
+    result["data_used"]["news_evidence"] = news_evidence
     return result
