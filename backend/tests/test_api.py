@@ -7,288 +7,279 @@ from fastapi.testclient import TestClient
 
 def test_health_and_portfolio_api_endpoints_work() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
+    with TestClient(app) as client:
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert health.json()["status"] == "ok"
 
-    health = client.get("/health")
-    assert health.status_code == 200
-    assert health.json()["status"] == "ok"
-
-    portfolio = client.get("/api/portfolio/summary")
-    assert portfolio.status_code == 200
-    payload = portfolio.json()
-    assert payload["cash"] >= 0
-    assert payload["positions"] == {}
-    assert payload["total_value"] >= 0
-    assert "exposure" in payload
+        portfolio = client.get("/api/portfolio/summary")
+        assert portfolio.status_code == 200
+        payload = portfolio.json()
+        assert payload["cash"] >= 0
+        assert payload["positions"] == {}
+        assert payload["total_value"] >= 0
+        assert "exposure" in payload
 
 
 def test_market_data_api_endpoints_work() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
+    with TestClient(app) as client:
+        quote = client.get("/api/market-data/quote?symbol=DEMO")
+        assert quote.status_code == 200
+        payload = quote.json()
+        assert payload["symbol"] == "DEMO"
+        assert payload["last_price"] > 0
 
-    quote = client.get("/api/market-data/quote?symbol=DEMO")
-    assert quote.status_code == 200
-    payload = quote.json()
-    assert payload["symbol"] == "DEMO"
-    assert payload["last_price"] > 0
-
-    history = client.get("/api/market-data/history?symbol=DEMO&limit=5")
-    assert history.status_code == 200
-    payload = history.json()
-    assert payload["symbol"] == "DEMO"
-    assert len(payload["data"]) == 5
-    assert payload["data"][0]["close"] > 0
+        history = client.get("/api/market-data/history?symbol=DEMO&limit=5")
+        assert history.status_code == 200
+        payload = history.json()
+        assert payload["symbol"] == "DEMO"
+        assert len(payload["data"]) == 5
+        assert payload["data"][0]["close"] > 0
 
 
 def test_feature_engineering_api_endpoints_work() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-
-    response = client.get("/api/features/engineer?symbol=DEMO&limit=20")
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["symbol"] == "DEMO"
-    assert payload["count"] == 20
-    assert "sma_20" in payload["feature_columns"]
-    assert payload["rows"][0]["close"] > 0
+    with TestClient(app) as client:
+        response = client.get("/api/features/engineer?symbol=DEMO&limit=20")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["symbol"] == "DEMO"
+        assert payload["count"] == 20
+        assert "sma_20" in payload["feature_columns"]
+        assert payload["rows"][0]["close"] > 0
 
 
 def test_market_data_history_prefers_ingested_bars() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-    ingested_bars = [
-        {
-            "timestamp": "2024-02-01T00:00:00Z",
-            "open": 49.0,
-            "high": 51.0,
-            "low": 48.5,
-            "close": 50.5,
-            "volume": 900,
-        },
-        {
-            "timestamp": "2024-02-02T00:00:00Z",
-            "open": 50.5,
-            "high": 52.0,
-            "low": 50.0,
-            "close": 51.25,
-            "volume": 1100,
-        },
-    ]
-    client.post(
-        "/api/market-data/ingest",
-        json={"symbol": "DEMO", "bars": ingested_bars},
-    )
+    with TestClient(app) as client:
+        ingested_bars = [
+            {
+                "timestamp": "2024-02-01T00:00:00Z",
+                "open": 49.0,
+                "high": 51.0,
+                "low": 48.5,
+                "close": 50.5,
+                "volume": 900,
+            },
+            {
+                "timestamp": "2024-02-02T00:00:00Z",
+                "open": 50.5,
+                "high": 52.0,
+                "low": 50.0,
+                "close": 51.25,
+                "volume": 1100,
+            },
+        ]
+        client.post(
+            "/api/market-data/ingest",
+            json={"symbol": "DEMO", "bars": ingested_bars},
+        )
 
-    response = client.get("/api/market-data/history?symbol=DEMO&limit=2")
+        response = client.get("/api/market-data/history?symbol=DEMO&limit=2")
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["count"] == 2
-    assert [bar["close"] for bar in payload["data"]] == [50.5, 51.25]
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["count"] == 2
+        assert [bar["close"] for bar in payload["data"]] == [50.5, 51.25]
 
 
 def test_feature_engineering_uses_ingested_market_data() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-    bars = [
-        {
-            "timestamp": "2024-02-01T00:00:00Z",
-            "open": 49.0,
-            "high": 51.0,
-            "low": 48.5,
-            "close": 50.5,
-            "volume": 900,
-        },
-        {
-            "timestamp": "2024-02-02T00:00:00Z",
-            "open": 50.5,
-            "high": 52.0,
-            "low": 50.0,
-            "close": 51.25,
-            "volume": 1100,
-        },
-    ]
-    ingest_response = client.post(
-        "/api/market-data/ingest",
-        json={"symbol": "DEMO", "bars": bars},
-    )
-    assert ingest_response.status_code == 200
+    with TestClient(app) as client:
+        bars = [
+            {
+                "timestamp": "2024-02-01T00:00:00Z",
+                "open": 49.0,
+                "high": 51.0,
+                "low": 48.5,
+                "close": 50.5,
+                "volume": 900,
+            },
+            {
+                "timestamp": "2024-02-02T00:00:00Z",
+                "open": 50.5,
+                "high": 52.0,
+                "low": 50.0,
+                "close": 51.25,
+                "volume": 1100,
+            },
+        ]
+        ingest_response = client.post(
+            "/api/market-data/ingest",
+            json={"symbol": "DEMO", "bars": bars},
+        )
+        assert ingest_response.status_code == 200
 
-    response = client.get("/api/features/engineer?symbol=DEMO&limit=2")
+        response = client.get("/api/features/engineer?symbol=DEMO&limit=2")
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["count"] == 2
-    assert [row["close"] for row in payload["rows"]] == [50.5, 51.25]
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["count"] == 2
+        assert [row["close"] for row in payload["rows"]] == [50.5, 51.25]
 
 
 def test_strategy_generation_uses_ingested_market_data() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-    bars = [
-        {
-            "timestamp": "2024-03-01T00:00:00Z",
-            "open": 49.0,
-            "high": 51.0,
-            "low": 48.5,
-            "close": 50.5,
-            "volume": 900,
-        },
-        {
-            "timestamp": "2024-03-02T00:00:00Z",
-            "open": 50.5,
-            "high": 52.0,
-            "low": 50.0,
-            "close": 51.25,
-            "volume": 1100,
-        },
-    ]
-    ingest_response = client.post(
-        "/api/market-data/ingest",
-        json={"symbol": "DEMO", "bars": bars},
-    )
-    assert ingest_response.status_code == 200
+    with TestClient(app) as client:
+        bars = [
+            {
+                "timestamp": "2024-03-01T00:00:00Z",
+                "open": 49.0,
+                "high": 51.0,
+                "low": 48.5,
+                "close": 50.5,
+                "volume": 900,
+            },
+            {
+                "timestamp": "2024-03-02T00:00:00Z",
+                "open": 50.5,
+                "high": 52.0,
+                "low": 50.0,
+                "close": 51.25,
+                "volume": 1100,
+            },
+        ]
+        ingest_response = client.post(
+            "/api/market-data/ingest",
+            json={"symbol": "DEMO", "bars": bars},
+        )
+        assert ingest_response.status_code == 200
 
-    response = client.get("/api/strategies/generate?symbol=DEMO&limit=2")
+        response = client.get("/api/strategies/generate?symbol=DEMO&limit=2")
 
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["count"] == 2
-    assert [signal["timestamp"] for signal in payload["signals"]] == [
-        "2024-03-01T00:00:00+00:00",
-        "2024-03-02T00:00:00+00:00",
-    ]
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["count"] == 2
+        assert [signal["timestamp"] for signal in payload["signals"]] == [
+            "2024-03-01T00:00:00+00:00",
+            "2024-03-02T00:00:00+00:00",
+        ]
 
 
 def test_strategy_api_endpoints_work() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-
-    response = client.get("/api/strategies/generate?symbol=DEMO&limit=40")
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["symbol"] == "DEMO"
-    assert payload["count"] == 40
-    assert payload["signals"][0]["action"] in {"BUY", "SELL", "HOLD"}
-    assert payload["strategy_id"].startswith("moving_average_crossover")
+    with TestClient(app) as client:
+        response = client.get("/api/strategies/generate?symbol=DEMO&limit=40")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["symbol"] == "DEMO"
+        assert payload["count"] == 40
+        assert payload["signals"][0]["action"] in {"BUY", "SELL", "HOLD"}
+        assert payload["strategy_id"].startswith("moving_average_crossover")
 
 
 def test_backtesting_api_endpoints_work() -> None:
     app = create_app(Settings(app_env="test", enable_trading=False))
-    client = TestClient(app)
-
-    response = client.get(
-        "/api/backtests/run?symbol=DEMO&limit=30&stop_loss_fraction=0.02&take_profit_fraction=0.05"
-    )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["symbol"] == "DEMO"
-    assert payload["initial_cash"] > 0
-    assert payload["ending_equity"] > 0
-    assert "metrics" in payload
-    assert "total_return" in payload["metrics"]
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/backtests/run?symbol=DEMO&limit=30&stop_loss_fraction=0.02&take_profit_fraction=0.05"
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["symbol"] == "DEMO"
+        assert payload["initial_cash"] > 0
+        assert payload["ending_equity"] > 0
+        assert "metrics" in payload
+        assert "total_return" in payload["metrics"]
 
 
 def test_ml_walk_forward_backtest_fits_only_before_test_windows() -> None:
     app = create_app(Settings(app_env="test", enable_trading=False))
-    client = TestClient(app)
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/backtests/walk-forward",
+            params={
+                "symbol": "DEMO",
+                "limit": 120,
+                "training_window": 60,
+                "validation_window": 20,
+                "test_window": 20,
+                "step_size": 20,
+                "strategy_id": "ml_probability",
+            },
+        )
 
-    response = client.get(
-        "/api/backtests/walk-forward",
-        params={
-            "symbol": "DEMO",
-            "limit": 120,
-            "training_window": 60,
-            "validation_window": 20,
-            "test_window": 20,
-            "step_size": 20,
-            "strategy_id": "ml_probability",
-        },
-    )
-
-    assert response.status_code == 200, response.text
-    payload = response.json()
-    assert payload["strategy_id"] == "ml_probability"
-    assert payload["model_type"] == "logistic_regression"
-    assert payload["fold_count"] == 2
-    assert set(payload["summary"]) == {"ml_probability", "moving_average", "buy_and_hold"}
-    assert payload["summary"]["ml_probability"]["folds"] == payload["fold_count"]
-    assert 0 <= payload["summary"]["ml_probability"]["profitable_fold_rate"] <= 1
-    assert "worst_drawdown" in payload["summary"]["ml_probability"]
-    assert all("metrics" in fold for fold in payload["folds"])
-    assert all(
-        set(fold["comparison"]) == {"moving_average", "buy_and_hold"} for fold in payload["folds"]
-    )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["strategy_id"] == "ml_probability"
+        assert payload["model_type"] == "logistic_regression"
+        assert payload["fold_count"] == 2
+        assert set(payload["summary"]) == {"ml_probability", "moving_average", "buy_and_hold"}
+        assert payload["summary"]["ml_probability"]["folds"] == payload["fold_count"]
+        assert 0 <= payload["summary"]["ml_probability"]["profitable_fold_rate"] <= 1
+        assert "worst_drawdown" in payload["summary"]["ml_probability"]
+        assert all("metrics" in fold for fold in payload["folds"])
+        assert all(
+            set(fold["comparison"]) == {"moving_average", "buy_and_hold"}
+            for fold in payload["folds"]
+        )
 
 
 def test_risk_api_evaluation_endpoints_work() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-
-    response = client.post(
-        "/api/risk/evaluate",
-        json={
-            "enabled": True,
-            "symbol": "DEMO",
-            "side": "BUY",
-            "entry_price": 100,
-            "stop_loss_price": 95,
-            "timestamp": "2024-01-02T00:00:00Z",
-            "account": {"equity": 100000, "available_cash": 100000},
-        },
-    )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["approved"] is True
-    assert payload["quantity"] > 0
-    assert payload["capital_required"] > 0
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/risk/evaluate",
+            json={
+                "enabled": True,
+                "symbol": "DEMO",
+                "side": "BUY",
+                "entry_price": 100,
+                "stop_loss_price": 95,
+                "timestamp": "2024-01-02T00:00:00Z",
+                "account": {"equity": 100000, "available_cash": 100000},
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["approved"] is True
+        assert payload["quantity"] > 0
+        assert payload["capital_required"] > 0
 
 
 def test_portfolio_api_snapshot_endpoint_works() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-
-    response = client.get("/api/portfolio/snapshot")
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["cash"] >= 0
-    assert payload["positions"] == {}
-    assert payload["total_value"] >= 0
-    assert "exposure" in payload
+    with TestClient(app) as client:
+        response = client.get("/api/portfolio/snapshot")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["cash"] >= 0
+        assert payload["positions"] == {}
+        assert payload["total_value"] >= 0
+        assert "exposure" in payload
 
 
 def test_monitoring_api_overview_endpoint_works() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-
-    response = client.get("/api/monitoring/overview")
-    assert response.status_code == 200
-    payload = response.json()
-    assert "execution" in payload
-    assert "model" in payload
-    assert payload["execution"]["open_orders"] >= 0
-    assert payload["model"]["status"] in {"healthy", "warning", "degraded"}
+    with TestClient(app) as client:
+        response = client.get("/api/monitoring/overview")
+        assert response.status_code == 200
+        payload = response.json()
+        assert "execution" in payload
+        assert "model" in payload
+        assert payload["execution"]["open_orders"] >= 0
+        assert payload["model"]["status"] in {"healthy", "warning", "degraded"}
 
 
 def test_paper_trading_order_api_endpoints_work() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
+    with TestClient(app) as client:
+        create_response = client.post(
+            "/api/paper-trading/orders",
+            json={"symbol": "DEMO", "side": "BUY", "quantity": 5, "limit_price": 100.0},
+        )
+        assert create_response.status_code == 200
+        payload = create_response.json()
+        assert payload["symbol"] == "DEMO"
+        assert payload["status"] in {"NEW", "OPEN"}
+        assert payload["quantity"] == 5
 
-    create_response = client.post(
-        "/api/paper-trading/orders",
-        json={"symbol": "DEMO", "side": "BUY", "quantity": 5, "limit_price": 100.0},
-    )
-    assert create_response.status_code == 200
-    payload = create_response.json()
-    assert payload["symbol"] == "DEMO"
-    assert payload["status"] in {"NEW", "OPEN"}
-    assert payload["quantity"] == 5
-
-    list_response = client.get("/api/paper-trading/orders")
-    assert list_response.status_code == 200
-    listed = list_response.json()
-    assert listed["count"] >= 1
-    assert listed["orders"][0]["symbol"] == "DEMO"
+        list_response = client.get("/api/paper-trading/orders")
+        assert list_response.status_code == 200
+        listed = list_response.json()
+        assert listed["count"] >= 1
+        assert listed["orders"][0]["symbol"] == "DEMO"
 
 
 def test_paper_market_update_triggers_submitted_stop_order(monkeypatch) -> None:
@@ -323,47 +314,46 @@ def test_paper_market_update_triggers_submitted_stop_order(monkeypatch) -> None:
     )
     broker.submit_order(stop, market_price=100)
     broker.submit_order(target, market_price=100)
-    client = TestClient(app)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/paper-trading/market-update",
+            json={
+                "symbol": "DEMO",
+                "timestamp": "2024-01-03T00:00:00Z",
+                "open": 90,
+                "high": 115,
+                "low": 90,
+                "close": 105,
+            },
+        )
 
-    response = client.post(
-        "/api/paper-trading/market-update",
-        json={
-            "symbol": "DEMO",
-            "timestamp": "2024-01-03T00:00:00Z",
-            "open": 90,
-            "high": 115,
-            "low": 90,
-            "close": 105,
-        },
-    )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["triggered_count"] == 1
+        assert payload["cancelled_count"] == 1
+        assert len(payload["executions"]) == 1
+        assert payload["executions"][0]["order_id"] == stop.id
+        assert payload["orders"][0]["status"] == OrderStatus.FILLED.value
+        assert payload["cancelled_orders"][0]["status"] == OrderStatus.CANCELLED.value
+        assert broker.positions == {}
+        assert broker.last_prices["DEMO"] == 105
 
-    assert response.status_code == 200, response.text
-    payload = response.json()
-    assert payload["triggered_count"] == 1
-    assert payload["cancelled_count"] == 1
-    assert len(payload["executions"]) == 1
-    assert payload["executions"][0]["order_id"] == stop.id
-    assert payload["orders"][0]["status"] == OrderStatus.FILLED.value
-    assert payload["cancelled_orders"][0]["status"] == OrderStatus.CANCELLED.value
-    assert broker.positions == {}
-    assert broker.last_prices["DEMO"] == 105
+        duplicate = client.post(
+            "/api/paper-trading/market-update",
+            json={
+                "symbol": "DEMO",
+                "timestamp": "2024-01-03T00:00:00Z",
+                "open": 90,
+                "high": 115,
+                "low": 90,
+                "close": 105,
+            },
+        )
+        assert duplicate.status_code == 409
 
-    duplicate = client.post(
-        "/api/paper-trading/market-update",
-        json={
-            "symbol": "DEMO",
-            "timestamp": "2024-01-03T00:00:00Z",
-            "open": 90,
-            "high": 115,
-            "low": 90,
-            "close": 105,
-        },
-    )
-    assert duplicate.status_code == 409
-
-    executions = client.get("/api/paper-trading/executions")
-    assert executions.status_code == 200
-    assert executions.json()["count"] == 2
+        executions = client.get("/api/paper-trading/executions")
+        assert executions.status_code == 200
+        assert executions.json()["count"] == 2
 
 
 def test_paper_fill_api_uses_execution_idempotency_key(monkeypatch) -> None:
@@ -378,287 +368,283 @@ def test_paper_fill_api_uses_execution_idempotency_key(monkeypatch) -> None:
     broker.risk_manager = None
     order = broker.create_order(symbol="DEMO", side="BUY", quantity=10)
     broker.submit_order(order, market_price=100)
-    client = TestClient(app)
-    headers = {"Idempotency-Key": "fill-request-123"}
-    body = {"price": 100, "quantity": 4}
+    with TestClient(app) as client:
+        headers = {"Idempotency-Key": "fill-request-123"}
+        body = {"price": 100, "quantity": 4}
 
-    first = client.post(f"/api/paper-trading/orders/{order.id}/fill", json=body, headers=headers)
-    retry = client.post(f"/api/paper-trading/orders/{order.id}/fill", json=body, headers=headers)
-    conflict = client.post(
-        f"/api/paper-trading/orders/{order.id}/fill",
-        json={"price": 101, "quantity": 4},
-        headers=headers,
-    )
+        first = client.post(
+            f"/api/paper-trading/orders/{order.id}/fill", json=body, headers=headers
+        )
+        retry = client.post(
+            f"/api/paper-trading/orders/{order.id}/fill", json=body, headers=headers
+        )
+        conflict = client.post(
+            f"/api/paper-trading/orders/{order.id}/fill",
+            json={"price": 101, "quantity": 4},
+            headers=headers,
+        )
 
-    assert first.status_code == 200
-    assert retry.status_code == 200
-    assert first.json()["execution"]["id"] == retry.json()["execution"]["id"]
-    assert order.filled_quantity == 4
-    assert len(broker.executions) == 1
-    assert conflict.status_code == 409
+        assert first.status_code == 200
+        assert retry.status_code == 200
+        assert first.json()["execution"]["id"] == retry.json()["execution"]["id"]
+        assert order.filled_quantity == 4
+        assert len(broker.executions) == 1
+        assert conflict.status_code == 409
 
 
 def test_ai_sentiment_api_endpoint_works() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-
-    response = client.post(
-        "/api/ai/sentiment",
-        json={
-            "symbol": "DEMO",
-            "headlines": [
-                "Earnings beat expectations and management raised guidance.",
-                "Analysts remain optimistic as demand expands globally.",
-            ],
-        },
-    )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["symbol"] == "DEMO"
-    assert payload["sentiment"] in {"bullish", "neutral", "bearish"}
-    assert payload["score"] >= -1.0
-    assert payload["score"] <= 1.0
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/ai/sentiment",
+            json={
+                "symbol": "DEMO",
+                "headlines": [
+                    "Earnings beat expectations and management raised guidance.",
+                    "Analysts remain optimistic as demand expands globally.",
+                ],
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["symbol"] == "DEMO"
+        assert payload["sentiment"] in {"bullish", "neutral", "bearish"}
+        assert payload["score"] >= -1.0
+        assert payload["score"] <= 1.0
 
 
 def test_agent_run_api_includes_sentiment_context() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-
-    response = client.post(
-        "/api/agents/run",
-        json={
-            "symbol": "DEMO",
-            "objective": "Assess near-term direction.",
-            "market_snapshot": {"price": 101.25, "change_pct": 1.5, "volume": 250000},
-            "news": [
-                "Revenue expanded strongly and management raised full-year guidance.",
-            ],
-        },
-    )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["symbol"] == "DEMO"
-    assert payload["status"] == "ok"
-    assert payload["sentiment"]["sentiment"] in {"bullish", "neutral", "bearish"}
-    assert payload["signal"]["trend"] in {"bullish", "neutral", "bearish"}
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/agents/run",
+            json={
+                "symbol": "DEMO",
+                "objective": "Assess near-term direction.",
+                "market_snapshot": {"price": 101.25, "change_pct": 1.5, "volume": 250000},
+                "news": [
+                    "Revenue expanded strongly and management raised full-year guidance.",
+                ],
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["symbol"] == "DEMO"
+        assert payload["status"] == "ok"
+        assert payload["sentiment"]["sentiment"] in {"bullish", "neutral", "bearish"}
+        assert payload["signal"]["trend"] in {"bullish", "neutral", "bearish"}
 
 
 def test_broker_status_api_endpoint_works() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-
-    response = client.get("/api/broker/status")
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == "ok"
-    assert payload["mode"] in {"paper", "live"}
-    assert payload["paper_enabled"] is True
-    assert payload["live_enabled"] is False
+    with TestClient(app) as client:
+        response = client.get("/api/broker/status")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "ok"
+        assert payload["mode"] in {"paper", "live"}
+        assert payload["paper_enabled"] is True
+        assert payload["live_enabled"] is False
 
 
 def test_market_data_news_endpoint_works() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-
-    response = client.get("/api/market-data/news?symbol=DEMO&limit=3")
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["symbol"] == "DEMO"
-    assert payload["count"] == 3
-    assert payload["items"][0]["headline"]
-    assert payload["items"][0]["sentiment"] in {"bullish", "neutral", "bearish"}
+    with TestClient(app) as client:
+        response = client.get("/api/market-data/news?symbol=DEMO&limit=3")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["symbol"] == "DEMO"
+        assert payload["count"] == 3
+        assert payload["items"][0]["headline"]
+        assert payload["items"][0]["sentiment"] in {"bullish", "neutral", "bearish"}
 
 
 def test_market_data_validation_endpoint_works() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-
-    response = client.get("/api/market-data/validate?symbol=DEMO&limit=20")
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["symbol"] == "DEMO"
-    assert payload["valid"] is True
-    assert payload["rows"] == 20
-    assert payload["null_count"] == 0
-    assert payload["issues"] == []
+    with TestClient(app) as client:
+        response = client.get("/api/market-data/validate?symbol=DEMO&limit=20")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["symbol"] == "DEMO"
+        assert payload["valid"] is True
+        assert payload["rows"] == 20
+        assert payload["null_count"] == 0
+        assert payload["issues"] == []
 
 
 def test_market_data_ingest_endpoint_works() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/market-data/ingest",
+            json={
+                "symbol": "DEMO",
+                "bars": [
+                    {
+                        "timestamp": "2024-01-01T00:00:00Z",
+                        "open": 99.0,
+                        "high": 101.0,
+                        "low": 98.5,
+                        "close": 100.5,
+                        "volume": 1200,
+                    },
+                    {
+                        "timestamp": "2024-01-02T00:00:00Z",
+                        "open": 100.5,
+                        "high": 102.0,
+                        "low": 99.0,
+                        "close": 101.25,
+                        "volume": 1300,
+                    },
+                ],
+            },
+        )
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["status"] == "ok"
+        assert payload["symbol"] == "DEMO"
+        assert payload["stored"] == 2
 
-    response = client.post(
-        "/api/market-data/ingest",
-        json={
-            "symbol": "DEMO",
-            "bars": [
-                {
-                    "timestamp": "2024-01-01T00:00:00Z",
-                    "open": 99.0,
-                    "high": 101.0,
-                    "low": 98.5,
-                    "close": 100.5,
-                    "volume": 1200,
-                },
-                {
-                    "timestamp": "2024-01-02T00:00:00Z",
-                    "open": 100.5,
-                    "high": 102.0,
-                    "low": 99.0,
-                    "close": 101.25,
-                    "volume": 1300,
-                },
-            ],
-        },
-    )
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["status"] == "ok"
-    assert payload["symbol"] == "DEMO"
-    assert payload["stored"] == 2
-
-    validation = client.get("/api/market-data/validate?symbol=DEMO&limit=20")
-    assert validation.status_code == 200
-    validation_payload = validation.json()
-    assert validation_payload["rows"] == 2
-    assert validation_payload["valid"] is True
+        validation = client.get("/api/market-data/validate?symbol=DEMO&limit=20")
+        assert validation.status_code == 200
+        validation_payload = validation.json()
+        assert validation_payload["rows"] == 2
+        assert validation_payload["valid"] is True
 
 
 def test_market_data_ingest_rejects_invalid_ohlcv_bar() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/market-data/ingest",
+            json={
+                "symbol": "DEMO",
+                "bars": [
+                    {
+                        "timestamp": "2024-01-01T00:00:00Z",
+                        "open": 99.0,
+                        "high": 98.0,
+                        "low": 97.0,
+                        "close": 99.5,
+                        "volume": 1200,
+                    }
+                ],
+            },
+        )
 
-    response = client.post(
-        "/api/market-data/ingest",
-        json={
-            "symbol": "DEMO",
-            "bars": [
-                {
-                    "timestamp": "2024-01-01T00:00:00Z",
-                    "open": 99.0,
-                    "high": 98.0,
-                    "low": 97.0,
-                    "close": 99.5,
-                    "volume": 1200,
-                }
-            ],
-        },
-    )
-
-    assert response.status_code == 422
+        assert response.status_code == 422
 
 
 def test_market_data_ingest_upserts_duplicate_timestamps() -> None:
     app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-    original_bar = {
-        "timestamp": "2024-01-05T00:00:00Z",
-        "open": 102.0,
-        "high": 104.0,
-        "low": 101.0,
-        "close": 103.0,
-        "volume": 1500,
-    }
-    replacement_bar = {
-        "timestamp": "2024-01-04T19:00:00-05:00",
-        "open": 103.0,
-        "high": 105.0,
-        "low": 102.0,
-        "close": 104.0,
-        "volume": 1600,
-    }
-    first_ingest = client.post(
-        "/api/market-data/ingest",
-        json={"symbol": "DEMO", "bars": [original_bar]},
-    )
-    second_ingest = client.post(
-        "/api/market-data/ingest",
-        json={"symbol": "DEMO", "bars": [replacement_bar]},
-    )
-    assert first_ingest.status_code == 200
-    assert second_ingest.status_code == 200
-    assert second_ingest.json()["total_records"] == 1
-
-    stored_response = client.get("/api/market-data/stored?symbol=DEMO")
-    assert stored_response.status_code == 200
-    stored_payload = stored_response.json()
-    assert stored_payload["count"] == 1
-    assert stored_payload["data"][0]["close"] == 104.0
-
-    validation_response = client.get("/api/market-data/validate?symbol=DEMO")
-    assert validation_response.status_code == 200
-    assert validation_response.json()["valid"] is True
-
-
-def test_market_data_store_retrieval_endpoint_works() -> None:
-    app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-
-    client.post(
-        "/api/market-data/ingest",
-        json={
-            "symbol": "DEMO",
-            "bars": [
-                {
-                    "timestamp": "2024-01-03T00:00:00Z",
-                    "open": 101.0,
-                    "high": 103.0,
-                    "low": 100.0,
-                    "close": 102.0,
-                    "volume": 1400,
-                },
-                {
-                    "timestamp": "2024-01-04T00:00:00Z",
-                    "open": 102.0,
-                    "high": 104.0,
-                    "low": 101.0,
-                    "close": 103.0,
-                    "volume": 1500,
-                },
-            ],
-        },
-    )
-
-    response = client.get("/api/market-data/stored?symbol=DEMO")
-    assert response.status_code == 200
-    payload = response.json()
-    assert payload["symbol"] == "DEMO"
-    assert payload["count"] == 2
-    assert payload["data"][0]["close"] > 0
-
-
-def test_market_data_history_sorts_out_of_order_ingestion() -> None:
-    app = create_app(Settings(enable_trading=False))
-    client = TestClient(app)
-    bars = [
-        {
-            "timestamp": "2024-01-07T00:00:00Z",
+    with TestClient(app) as client:
+        original_bar = {
+            "timestamp": "2024-01-05T00:00:00Z",
             "open": 102.0,
             "high": 104.0,
             "low": 101.0,
             "close": 103.0,
             "volume": 1500,
-        },
-        {
-            "timestamp": "2024-01-06T00:00:00Z",
-            "open": 101.0,
-            "high": 103.0,
-            "low": 100.0,
-            "close": 102.0,
-            "volume": 1400,
-        },
-    ]
-    ingest_response = client.post(
-        "/api/market-data/ingest",
-        json={"symbol": "DEMO", "bars": bars},
-    )
-    assert ingest_response.status_code == 200
+        }
+        replacement_bar = {
+            "timestamp": "2024-01-04T19:00:00-05:00",
+            "open": 103.0,
+            "high": 105.0,
+            "low": 102.0,
+            "close": 104.0,
+            "volume": 1600,
+        }
+        first_ingest = client.post(
+            "/api/market-data/ingest",
+            json={"symbol": "DEMO", "bars": [original_bar]},
+        )
+        second_ingest = client.post(
+            "/api/market-data/ingest",
+            json={"symbol": "DEMO", "bars": [replacement_bar]},
+        )
+        assert first_ingest.status_code == 200
+        assert second_ingest.status_code == 200
+        assert second_ingest.json()["total_records"] == 1
 
-    response = client.get("/api/market-data/history?symbol=DEMO&limit=2")
+        stored_response = client.get("/api/market-data/stored?symbol=DEMO")
+        assert stored_response.status_code == 200
+        stored_payload = stored_response.json()
+        assert stored_payload["count"] == 1
+        assert stored_payload["data"][0]["close"] == 104.0
 
-    assert response.status_code == 200
-    timestamps = [bar["timestamp"] for bar in response.json()["data"]]
-    assert timestamps == ["2024-01-06T00:00:00Z", "2024-01-07T00:00:00Z"]
+        validation_response = client.get("/api/market-data/validate?symbol=DEMO")
+        assert validation_response.status_code == 200
+        assert validation_response.json()["valid"] is True
+
+
+def test_market_data_store_retrieval_endpoint_works() -> None:
+    app = create_app(Settings(enable_trading=False))
+    with TestClient(app) as client:
+        client.post(
+            "/api/market-data/ingest",
+            json={
+                "symbol": "DEMO",
+                "bars": [
+                    {
+                        "timestamp": "2024-01-03T00:00:00Z",
+                        "open": 101.0,
+                        "high": 103.0,
+                        "low": 100.0,
+                        "close": 102.0,
+                        "volume": 1400,
+                    },
+                    {
+                        "timestamp": "2024-01-04T00:00:00Z",
+                        "open": 102.0,
+                        "high": 104.0,
+                        "low": 101.0,
+                        "close": 103.0,
+                        "volume": 1500,
+                    },
+                ],
+            },
+        )
+
+        response = client.get("/api/market-data/stored?symbol=DEMO")
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["symbol"] == "DEMO"
+        assert payload["count"] == 2
+        assert payload["data"][0]["close"] > 0
+
+
+def test_market_data_history_sorts_out_of_order_ingestion() -> None:
+    app = create_app(Settings(enable_trading=False))
+    with TestClient(app) as client:
+        bars = [
+            {
+                "timestamp": "2024-01-07T00:00:00Z",
+                "open": 102.0,
+                "high": 104.0,
+                "low": 101.0,
+                "close": 103.0,
+                "volume": 1500,
+            },
+            {
+                "timestamp": "2024-01-06T00:00:00Z",
+                "open": 101.0,
+                "high": 103.0,
+                "low": 100.0,
+                "close": 102.0,
+                "volume": 1400,
+            },
+        ]
+        ingest_response = client.post(
+            "/api/market-data/ingest",
+            json={"symbol": "DEMO", "bars": bars},
+        )
+        assert ingest_response.status_code == 200
+
+        response = client.get("/api/market-data/history?symbol=DEMO&limit=2")
+
+        assert response.status_code == 200
+        timestamps = [bar["timestamp"] for bar in response.json()["data"]]
+        assert timestamps == ["2024-01-06T00:00:00Z", "2024-01-07T00:00:00Z"]
 
 
 def test_performance_summary_api_endpoint_works() -> None:
