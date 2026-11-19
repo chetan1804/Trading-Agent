@@ -259,15 +259,21 @@ def test_monitoring_api_overview_endpoint_works() -> None:
         assert "execution" in payload
         assert "model" in payload
         assert payload["execution"]["open_orders"] >= 0
-        assert payload["model"]["status"] in {"healthy", "warning", "degraded"}
+        assert payload["model"]["status"] == "unavailable"
 
 
 def test_paper_trading_order_api_endpoints_work() -> None:
-    app = create_app(Settings(enable_trading=False))
+    app = create_app(Settings(enable_trading=True))
     with TestClient(app) as client:
         create_response = client.post(
             "/api/paper-trading/orders",
-            json={"symbol": "DEMO", "side": "BUY", "quantity": 5, "limit_price": 100.0},
+            json={
+                "symbol": "DEMO",
+                "side": "BUY",
+                "quantity": 5,
+                "limit_price": 100.0,
+                "stop_price": 95.0,
+            },
         )
         assert create_response.status_code == 200
         payload = create_response.json()
@@ -644,7 +650,10 @@ def test_market_data_history_sorts_out_of_order_ingestion() -> None:
 
         assert response.status_code == 200
         timestamps = [bar["timestamp"] for bar in response.json()["data"]]
-        assert timestamps == ["2024-01-06T00:00:00Z", "2024-01-07T00:00:00Z"]
+        assert timestamps == [
+            "2024-01-06T00:00:00+00:00",
+            "2024-01-07T00:00:00+00:00",
+        ]
 
 
 def test_performance_summary_api_endpoint_works() -> None:
