@@ -20,7 +20,7 @@ Health routes are outside the `/api` rate limiter.
 | `GET` | `/api/market-data/quote` | Latest cached or synthetic quote. Query: `symbol` (default `RELIANCE.NS`). | No route key |
 | `GET` | `/api/market-data/history` | Recent cached or synthetic OHLCV bars. Query: `symbol`, `limit` (1–500, default 20). | No route key |
 | `GET` | `/api/market-data/news` | Deterministic sample headlines. Query: `symbol`, `limit` (1–10, default 5). | No route key |
-| `GET` | `/api/market-data/validate` | Basic checks on cached or synthetic bars. Query: `symbol`, `limit` (1–500, default 20). | No route key |
+| `GET` | `/api/market-data/validate` | Validate cached or synthetic bars, with optional expected-cadence gap checks. Query: `symbol`, `limit` (1–500, default 20), `expected_interval` (Pandas duration such as `1h` or `1D`). | No route key |
 | `GET` | `/api/market-data/stored` | Cached bars currently available to this API process. Query: `symbol`, `limit` (1–500, default 50). | No route key |
 | `POST` | `/api/market-data/ingest` | Validate, persist, and cache supplied OHLCV bars. | Key when enabled |
 | `GET` | `/api/features/engineer` | Latest engineered feature rows. Query: `symbol`, `limit` (1–200, default 20). | No route key |
@@ -28,6 +28,8 @@ Health routes are outside the `/api` rate limiter.
 | `GET` | `/api/news` | Recent persisted headlines and sentiment. Query: required `symbol`, `limit` (1–200, default 20). | No route key |
 
 Market-data bars use timestamps and `open`, `high`, `low`, `close`, and `volume`. Ingestion normalizes naive timestamps as UTC, validates OHLC constraints, and upserts by symbol and timestamp. The `stored` endpoint returns the process cache; PostgreSQL is the durable store.
+
+The validation endpoint reports structured `quality_issues` with severity and affected row counts. Set `expected_interval` to detect missing bars; `missing_intervals` counts the estimated absent intervals. Data-gap warnings do not make `valid` false, while data-quality errors do. For example, `/api/market-data/validate?symbol=RELIANCE.NS&expected_interval=1h` checks for gaps larger than one hour.
 
 News ingestion only processes caller-supplied articles; it does not connect to external feeds. Duplicate detection uses normalized symbol, source, and headline. Sentiment uses the local keyword analyzer; confidence is the absolute sentiment score, not a calibrated probability. Apply migration `20261114_0015` before using the news endpoints.
 

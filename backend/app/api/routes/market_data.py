@@ -6,6 +6,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, model_validator
 from trading.data.synthetic import generate_synthetic_ohlcv
+from trading.data.validation import validate_ohlcv
 
 from app.core.security import require_api_key
 from app.repositories.market_data import MarketDataRepository
@@ -130,6 +131,7 @@ async def market_data_validate(
     request: Request,
     symbol: str = "RELIANCE.NS",
     limit: int = Query(default=20, ge=1, le=500),
+    expected_interval: str | None = Query(default=None, min_length=1, max_length=32),
 ) -> dict[str, object]:
     store = getattr(request.app.state, "market_data_store", {})
     stored_bars = store.get(symbol.upper(), [])
@@ -137,27 +139,32 @@ async def market_data_validate(
         frame = pd.DataFrame(stored_bars[-limit:])
     else:
         frame = generate_synthetic_ohlcv(symbol=symbol, periods=max(limit, 1), seed=7)
-    null_count = int(frame.isna().sum().sum())
-    issues: list[str] = []
-
-    if frame.empty:
-        issues.append("No rows returned for the requested symbol")
-    if null_count > 0:
-        issues.append(f"Null values detected: {null_count}")
-    duplicate_count = int(pd.to_datetime(frame["timestamp"], utc=True).duplicated().sum())
-    if duplicate_count > 0:
-        issues.append(f"Duplicate timestamps detected: {duplicate_count}")
-    if (frame["close"] <= 0).any():
-        issues.append("Non-positive close prices detected")
-    if (frame["volume"] <= 0).any():
-        issues.append("Non-positive volume detected")
+    try:
+        report = validate_ohlcv(frame, expected_interval=expected_interval)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    null_count = int(report.data.isna().sum().sum())
+    quality_issues = [
+        {
+            "code": issue.code,
+            "severity": issue.severity,
+            "message": issue.message,
+            "row_count": issue.row_count,
+        }
+        for issue in report.issues
+    ]
 
     return {
         "symbol": symbol.upper(),
-        "rows": int(len(frame)),
+        "rows": int(len(report.data)),
         "null_count": null_count,
-        "issues": issues,
-        "valid": not issues,
+        "issues": [issue.message for issue in report.issues],
+        "quality_issues": quality_issues,
+        "expected_interval": expected_interval,
+        "missing_intervals": sum(
+            issue.row_count for issue in report.issues if issue.code == "data_gaps"
+        ),
+        "valid": not report.has_errors,
     }
 
 
