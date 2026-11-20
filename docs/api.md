@@ -27,7 +27,7 @@ Health routes are outside the `/api` rate limiter.
 | `POST` | `/api/news/ingest` | Normalize supplied headlines, deduplicate them, score lexical sentiment, and persist the results. Accepts 1–500 articles. | Key when enabled |
 | `GET` | `/api/news` | Recent persisted headlines and sentiment. Query: required `symbol`, `limit` (1–200, default 20). | No route key |
 
-Market-data bars use timestamps and `open`, `high`, `low`, `close`, and `volume`. Ingestion normalizes naive timestamps as UTC, validates OHLC constraints, and upserts by symbol and timestamp. The `stored` endpoint returns the process cache; PostgreSQL is the durable store.
+Market-data bars use timestamps and `open`, `high`, `low`, `close`, and `volume`. Ingestion normalizes naive timestamps as UTC, validates OHLC constraints, rejects duplicate normalized timestamps within one batch, and upserts by symbol and timestamp across requests. The `stored` endpoint returns the process cache; PostgreSQL is the durable store.
 
 The validation endpoint reports structured `quality_issues` with severity and affected row counts. Set `expected_interval` to detect missing bars; `missing_intervals` counts the estimated absent intervals. Data-gap warnings do not make `valid` false, while data-quality errors do. For example, `/api/market-data/validate?symbol=RELIANCE.NS&expected_interval=1h` checks for gaps larger than one hour.
 

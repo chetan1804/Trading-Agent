@@ -197,6 +197,13 @@ class MarketDataIngestRequest(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=32)
     bars: list[OHLCVBar] = Field(default_factory=list)
 
+    @model_validator(mode="after")
+    def reject_duplicate_timestamps(self) -> MarketDataIngestRequest:
+        timestamps = [bar.timestamp for bar in self.bars]
+        if len(timestamps) != len(set(timestamps)):
+            raise ValueError("bars must not contain duplicate timestamps after UTC normalization")
+        return self
+
 
 @router.post("/market-data/ingest")
 async def market_data_ingest(
@@ -232,6 +239,7 @@ async def market_data_ingest(
         timestamp = pd.to_datetime(bar["timestamp"], utc=True)
         bars_by_timestamp[timestamp] = {
             "timestamp": timestamp.isoformat(),
+            "symbol": symbol,
             "open": float(bar["open"]),
             "high": float(bar["high"]),
             "low": float(bar["low"]),
