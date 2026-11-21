@@ -17,15 +17,17 @@ class MarketDataRepository:
     async def upsert_many(self, bars: list[dict[str, object]]) -> None:
         if not bars:
             return
-        statement = insert(MarketBar).values(bars)
-        statement = statement.on_conflict_do_update(
-            index_elements=[MarketBar.symbol, MarketBar.timestamp],
-            set_={
-                column: getattr(statement.excluded, column)
-                for column in ("open", "high", "low", "close", "volume")
-            },
-        )
-        await self.session.execute(statement)
+        batch_size = 1_000
+        for offset in range(0, len(bars), batch_size):
+            statement = insert(MarketBar).values(bars[offset : offset + batch_size])
+            statement = statement.on_conflict_do_update(
+                index_elements=[MarketBar.symbol, MarketBar.timestamp],
+                set_={
+                    column: getattr(statement.excluded, column)
+                    for column in ("open", "high", "low", "close", "volume")
+                },
+            )
+            await self.session.execute(statement)
         await self.session.commit()
 
     async def list_all(self) -> dict[str, list[dict[str, object]]]:

@@ -204,7 +204,7 @@ class OHLCVBar(BaseModel):
 
 class MarketDataIngestRequest(BaseModel):
     symbol: str = Field(..., min_length=1, max_length=32)
-    bars: list[OHLCVBar] = Field(default_factory=list)
+    bars: list[OHLCVBar] = Field(default_factory=list, max_length=10_000)
 
     @model_validator(mode="after")
     def reject_duplicate_timestamps(self) -> MarketDataIngestRequest:

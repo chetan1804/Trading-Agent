@@ -22,12 +22,12 @@ Health routes are outside the `/api` rate limiter.
 | `GET` | `/api/market-data/news` | Deterministic sample headlines. Query: `symbol`, `limit` (1–10, default 5). | No route key |
 | `GET` | `/api/market-data/validate` | Validate cached or synthetic bars, with optional expected-cadence gap checks; response `data_source` identifies the input. Query: `symbol`, `limit` (1–500, default 20), `expected_interval` (Pandas duration such as `1h` or `1D`). | No route key |
 | `GET` | `/api/market-data/stored` | Cached bars currently available to this API process. Query: `symbol`, `limit` (1–500, default 50). | No route key |
-| `POST` | `/api/market-data/ingest` | Validate, persist, and cache supplied OHLCV bars. | Key when enabled |
+| `POST` | `/api/market-data/ingest` | Validate, persist, and cache up to 10,000 supplied OHLCV bars per request. | Key when enabled |
 | `GET` | `/api/features/engineer` | Latest engineered feature rows. Query: `symbol`, `limit` (1–200, default 20). | No route key |
 | `POST` | `/api/news/ingest` | Normalize supplied headlines, deduplicate them, score lexical sentiment, and persist the results. Accepts 1–500 articles. | Key when enabled |
 | `GET` | `/api/news` | Recent persisted headlines and sentiment. Query: required `symbol`, `limit` (1–200, default 20). | No route key |
 
-Market-data bars use timestamps and `open`, `high`, `low`, `close`, and `volume`. Ingestion normalizes naive timestamps as UTC, validates OHLC constraints, rejects duplicate normalized timestamps within one batch, and upserts by symbol and timestamp across requests. The `stored` endpoint returns the process cache; PostgreSQL is the durable store.
+Market-data bars use timestamps and `open`, `high`, `low`, `close`, and `volume`. Ingestion normalizes naive timestamps as UTC, validates OHLC constraints, rejects duplicate normalized timestamps within one batch, and upserts by symbol and timestamp across requests. PostgreSQL writes are split into batches of 1,000 rows and committed together. The `stored` endpoint returns the process cache; PostgreSQL is the durable store.
 
 Quote, history, and validation responses identify whether data came from ingested bars or the deterministic synthetic fallback. Do not treat synthetic fallback values as market observations.
 
