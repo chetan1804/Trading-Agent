@@ -66,15 +66,18 @@ async def market_data_quote(request: Request, symbol: str = "RELIANCE.NS") -> di
     store = getattr(request.app.state, "market_data_store", {})
     stored_bars = store.get(symbol_upper, [])
     if stored_bars:
+        data_source = "ingested"
         latest = stored_bars[-1]
         timestamp = pd.to_datetime(latest["timestamp"], utc=True)
         values = {name: float(latest[name]) for name in ("open", "high", "low", "close")}
     else:
+        data_source = "synthetic"
         latest = generate_synthetic_ohlcv(symbol=symbol_upper, periods=50, seed=7).iloc[-1]
         timestamp = latest["timestamp"]
         values = {name: float(latest[name]) for name in ("open", "high", "low", "close")}
     return {
         "symbol": symbol_upper,
+        "data_source": data_source,
         "timestamp": timestamp.isoformat(),
         "last_price": values["close"],
         **values,
@@ -91,8 +94,10 @@ async def market_data_history(
     store = getattr(request.app.state, "market_data_store", {})
     stored_bars = store.get(symbol_upper, [])
     if stored_bars:
+        data_source = "ingested"
         records = list(stored_bars)[-limit:]
     else:
+        data_source = "synthetic"
         samples = generate_synthetic_ohlcv(symbol=symbol, periods=max(limit, 1), seed=7)
         history = samples.tail(limit).reset_index(drop=True)
         records = [
@@ -108,6 +113,7 @@ async def market_data_history(
         ]
     return {
         "symbol": symbol_upper,
+        "data_source": data_source,
         "count": len(records),
         "data": records,
     }
@@ -136,8 +142,10 @@ async def market_data_validate(
     store = getattr(request.app.state, "market_data_store", {})
     stored_bars = store.get(symbol.upper(), [])
     if stored_bars:
+        data_source = "ingested"
         frame = pd.DataFrame(stored_bars[-limit:])
     else:
+        data_source = "synthetic"
         frame = generate_synthetic_ohlcv(symbol=symbol, periods=max(limit, 1), seed=7)
     try:
         report = validate_ohlcv(frame, expected_interval=expected_interval)
@@ -156,6 +164,7 @@ async def market_data_validate(
 
     return {
         "symbol": symbol.upper(),
+        "data_source": data_source,
         "rows": int(len(report.data)),
         "null_count": null_count,
         "issues": [issue.message for issue in report.issues],

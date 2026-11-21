@@ -17,10 +17,10 @@ Health routes are outside the `/api` rate limiter.
 
 | Method | Path | Description | Access |
 | --- | --- | --- | --- |
-| `GET` | `/api/market-data/quote` | Latest cached or synthetic quote. Query: `symbol` (default `RELIANCE.NS`). | No route key |
-| `GET` | `/api/market-data/history` | Recent cached or synthetic OHLCV bars. Query: `symbol`, `limit` (1–500, default 20). | No route key |
+| `GET` | `/api/market-data/quote` | Latest cached or synthetic quote; response `data_source` identifies which. Query: `symbol` (default `RELIANCE.NS`). | No route key |
+| `GET` | `/api/market-data/history` | Recent cached or synthetic OHLCV bars; response `data_source` identifies which. Query: `symbol`, `limit` (1–500, default 20). | No route key |
 | `GET` | `/api/market-data/news` | Deterministic sample headlines. Query: `symbol`, `limit` (1–10, default 5). | No route key |
-| `GET` | `/api/market-data/validate` | Validate cached or synthetic bars, with optional expected-cadence gap checks. Query: `symbol`, `limit` (1–500, default 20), `expected_interval` (Pandas duration such as `1h` or `1D`). | No route key |
+| `GET` | `/api/market-data/validate` | Validate cached or synthetic bars, with optional expected-cadence gap checks; response `data_source` identifies the input. Query: `symbol`, `limit` (1–500, default 20), `expected_interval` (Pandas duration such as `1h` or `1D`). | No route key |
 | `GET` | `/api/market-data/stored` | Cached bars currently available to this API process. Query: `symbol`, `limit` (1–500, default 50). | No route key |
 | `POST` | `/api/market-data/ingest` | Validate, persist, and cache supplied OHLCV bars. | Key when enabled |
 | `GET` | `/api/features/engineer` | Latest engineered feature rows. Query: `symbol`, `limit` (1–200, default 20). | No route key |
@@ -28,6 +28,8 @@ Health routes are outside the `/api` rate limiter.
 | `GET` | `/api/news` | Recent persisted headlines and sentiment. Query: required `symbol`, `limit` (1–200, default 20). | No route key |
 
 Market-data bars use timestamps and `open`, `high`, `low`, `close`, and `volume`. Ingestion normalizes naive timestamps as UTC, validates OHLC constraints, rejects duplicate normalized timestamps within one batch, and upserts by symbol and timestamp across requests. The `stored` endpoint returns the process cache; PostgreSQL is the durable store.
+
+Quote, history, and validation responses identify whether data came from ingested bars or the deterministic synthetic fallback. Do not treat synthetic fallback values as market observations.
 
 The validation endpoint reports structured `quality_issues` with severity and affected row counts. Set `expected_interval` to detect missing bars; `missing_intervals` counts the estimated absent intervals. Data-gap warnings do not make `valid` false, while data-quality errors do. For example, `/api/market-data/validate?symbol=RELIANCE.NS&expected_interval=1h` checks for gaps larger than one hour.
 
