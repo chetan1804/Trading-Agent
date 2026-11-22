@@ -466,7 +466,7 @@ def test_market_data_news_endpoint_works() -> None:
 
 
 def test_market_data_validation_endpoint_works() -> None:
-    app = create_app(Settings(enable_trading=False))
+    app = create_app(Settings(enable_trading=False, app_env="test"))
     with TestClient(app) as client:
         response = client.get("/api/market-data/validate?symbol=DEMO&limit=20")
         assert response.status_code == 200
@@ -476,6 +476,26 @@ def test_market_data_validation_endpoint_works() -> None:
         assert payload["rows"] == 20
         assert payload["null_count"] == 0
         assert payload["issues"] == []
+        assert payload["max_abs_close_return"] == 1.0
+        assert payload["outlier_check_enabled"] is True
+
+        disabled_response = client.get(
+            "/api/market-data/validate"
+            "?symbol=DEMO&limit=20&max_abs_close_return=0.25&check_outliers=false"
+        )
+        assert disabled_response.status_code == 200
+        disabled_payload = disabled_response.json()
+        assert disabled_payload["max_abs_close_return"] is None
+        assert disabled_payload["outlier_check_enabled"] is False
+
+        custom_response = client.get(
+            "/api/market-data/validate"
+            "?symbol=DEMO&limit=20&max_abs_close_return=0.25"
+        )
+        assert custom_response.status_code == 200
+        custom_payload = custom_response.json()
+        assert custom_payload["max_abs_close_return"] == 0.25
+        assert custom_payload["outlier_check_enabled"] is True
 
 
 def test_market_data_ingest_endpoint_works() -> None:
