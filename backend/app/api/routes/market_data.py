@@ -138,6 +138,8 @@ async def market_data_validate(
     symbol: str = "RELIANCE.NS",
     limit: int = Query(default=20, ge=1, le=500),
     expected_interval: str | None = Query(default=None, min_length=1, max_length=32),
+    max_abs_close_return: float | None = Query(default=1.0, gt=0),
+    check_outliers: bool = True,
 ) -> dict[str, object]:
     store = getattr(request.app.state, "market_data_store", {})
     stored_bars = store.get(symbol.upper(), [])
@@ -148,7 +150,11 @@ async def market_data_validate(
         data_source = "synthetic"
         frame = generate_synthetic_ohlcv(symbol=symbol, periods=max(limit, 1), seed=7)
     try:
-        report = validate_ohlcv(frame, expected_interval=expected_interval)
+        report = validate_ohlcv(
+            frame,
+            expected_interval=expected_interval,
+            max_abs_close_return=max_abs_close_return if check_outliers else None,
+        )
     except (TypeError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     null_count = int(report.data.isna().sum().sum())
@@ -170,6 +176,8 @@ async def market_data_validate(
         "issues": [issue.message for issue in report.issues],
         "quality_issues": quality_issues,
         "expected_interval": expected_interval,
+        "max_abs_close_return": max_abs_close_return if check_outliers else None,
+        "outlier_check_enabled": check_outliers,
         "missing_intervals": sum(
             issue.row_count for issue in report.issues if issue.code == "data_gaps"
         ),
