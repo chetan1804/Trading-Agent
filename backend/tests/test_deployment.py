@@ -14,4 +14,12 @@ def test_deployment_status_endpoint_returns_runtime_summary() -> None:
         assert payload["environment"] in {"development", "production", "staging", "test"}
         assert "broker_mode" in payload
         assert "services" in payload
+        assert set(payload["services"]) >= {
+            "backend",
+            "postgres",
+            "redis",
+            "market_data",
+            "broker",
+            "model_service",
+        }
         assert "docker_ready" in payload
