@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 
 def test_health_and_portfolio_api_endpoints_work() -> None:
-    app = create_app(Settings(enable_trading=False))
+    app = create_app(Settings(app_env="test", enable_trading=False))
     with TestClient(app) as client:
         health = client.get("/health")
         assert health.status_code == 200
@@ -39,7 +39,7 @@ def test_market_data_api_endpoints_work() -> None:
 
 
 def test_feature_engineering_api_endpoints_work() -> None:
-    app = create_app(Settings(enable_trading=False))
+    app = create_app(Settings(app_env="test", enable_trading=False))
     with TestClient(app) as client:
         response = client.get("/api/features/engineer?symbol=DEMO&limit=20")
         assert response.status_code == 200
@@ -158,7 +158,7 @@ def test_strategy_generation_uses_ingested_market_data() -> None:
 
 
 def test_strategy_api_endpoints_work() -> None:
-    app = create_app(Settings(enable_trading=False))
+    app = create_app(Settings(app_env="test", enable_trading=False))
     with TestClient(app) as client:
         response = client.get("/api/strategies/generate?symbol=DEMO&limit=40")
         assert response.status_code == 200
@@ -263,7 +263,7 @@ def test_monitoring_api_overview_endpoint_works() -> None:
 
 
 def test_paper_trading_order_api_endpoints_work() -> None:
-    app = create_app(Settings(enable_trading=True))
+    app = create_app(Settings(app_env="test", enable_trading=True))
     with TestClient(app) as client:
         create_response = client.post(
             "/api/paper-trading/orders",
@@ -499,7 +499,7 @@ def test_market_data_validation_endpoint_works() -> None:
 
 
 def test_market_data_ingest_endpoint_works() -> None:
-    app = create_app(Settings(enable_trading=False))
+    app = create_app(Settings(app_env="test", enable_trading=False))
     with TestClient(app) as client:
         response = client.post(
             "/api/market-data/ingest",
@@ -594,7 +594,7 @@ def test_market_data_ingest_rejects_duplicate_timestamps_in_one_batch() -> None:
 
 
 def test_market_data_ingest_upserts_duplicate_timestamps() -> None:
-    app = create_app(Settings(enable_trading=False))
+    app = create_app(Settings(app_env="test", enable_trading=False))
     with TestClient(app) as client:
         original_bar = {
             "timestamp": "2024-01-05T00:00:00Z",
@@ -636,7 +636,7 @@ def test_market_data_ingest_upserts_duplicate_timestamps() -> None:
 
 
 def test_market_data_store_retrieval_endpoint_works() -> None:
-    app = create_app(Settings(enable_trading=False))
+    app = create_app(Settings(app_env="test", enable_trading=False))
     with TestClient(app) as client:
         client.post(
             "/api/market-data/ingest",
@@ -672,7 +672,7 @@ def test_market_data_store_retrieval_endpoint_works() -> None:
 
 
 def test_market_data_history_sorts_out_of_order_ingestion() -> None:
-    app = create_app(Settings(enable_trading=False))
+    app = create_app(Settings(app_env="test", enable_trading=False))
     with TestClient(app) as client:
         bars = [
             {
