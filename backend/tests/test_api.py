@@ -489,8 +489,7 @@ def test_market_data_validation_endpoint_works() -> None:
         assert disabled_payload["outlier_check_enabled"] is False
 
         custom_response = client.get(
-            "/api/market-data/validate"
-            "?symbol=DEMO&limit=20&max_abs_close_return=0.25"
+            "/api/market-data/validate?symbol=DEMO&limit=20&max_abs_close_return=0.25"
         )
         assert custom_response.status_code == 200
         custom_payload = custom_response.json()
