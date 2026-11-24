@@ -43,7 +43,7 @@ Submit caller-supplied news with `POST /api/news/ingest` (API key required when 
 
 `GET /api/performance/summary` reports the current paper account's marked equity, total return from initial cash, realized and unrealized P&amp;L, recorded fill counts, exit-fill win rate, profit factor, and fees. Exit metrics use net realized P&amp;L from sell fills that have this value recorded; older fills without it are excluded. The service persists equity observations at startup, fills, and paper market updates. Once at least two daily observations exist, the report also calculates Sharpe ratio, maximum drawdown, and CAGR from that observed history. Apply migrations through `20261114_0015` with `make migrate` before starting the updated service.
 
-Start PostgreSQL and Redis before running the API. The complete stack, including the API, PostgreSQL, Redis, and production-built dashboard, starts with `docker compose up --build`. The dashboard is available at <http://localhost:5173> and the API at <http://localhost:8001>. Set `VITE_API_URL` to the browser-reachable API origin when deploying elsewhere; it is embedded into the frontend at image build time. Set `FRONTEND_PORT` and `API_PORT` to change the local published ports. Compose uses local-only development credentials by default; override them with environment variables for non-local use. For a separately started API, apply schema changes with `make migrate` before `make run`.
+Start PostgreSQL and Redis before running the API. The complete stack, including the API, PostgreSQL, Redis, and production-built dashboard, starts with `docker compose up --build`. The dashboard is available at <http://localhost:5173> and the API at <http://localhost:8001>. Set `VITE_API_URL` to the browser-reachable API origin when deploying elsewhere; it is embedded into the frontend at image build time. Set `FRONTEND_PORT` and `API_PORT` to change the dashboard/API published ports. Compose publishes PostgreSQL on host port `55432` and Redis on host port `56379` by default; set `POSTGRES_PORT` and `REDIS_PORT` to override these host ports. The corresponding `.env` defaults are `55432` and `56379`, respectively. Compose uses local-only development credentials by default; override them with environment variables for non-local use. For a separately started API, apply schema changes with `make migrate` before `make run`.
 
 ## Checks
 
@@ -52,7 +52,7 @@ make test
 make lint
 ```
 
-`GET /health` checks API liveness. `GET /health/ready` checks PostgreSQL, Redis, market-data access (persisted bars with synthetic fallback), the paper broker adapter, and model-service configuration; it returns 503 when any required check is unavailable.
+`GET /health` checks API liveness. `GET /health/ready` checks PostgreSQL, Redis, market-data access (persisted bars with synthetic fallback), the paper broker adapter, and model-service configuration; it returns 503 when any required check is unavailable. `GET /api/deployment/status` also reports those service states plus the configured environment and broker/trading modes, with `status` set to `degraded` when a required dependency or adapter is unavailable.
 
 ## Deployment
 

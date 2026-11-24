@@ -97,7 +97,9 @@ Equity observations are captured at application startup, paper fills, and paper 
 | `postgres` | Stores market data, paper-account records, model registry and observations, equity history, strategy decisions, and audit logs. |
 | `redis` | Provides fixed-window rate-limit counters for API requests. |
 
-Compose waits for PostgreSQL and Redis health before starting the backend, and for backend readiness before starting the frontend. `/health` reports liveness; `/health/ready` checks PostgreSQL and Redis. API requests return an unavailable response when Redis is down because rate-limit enforcement depends on it.
+Compose publishes PostgreSQL on host port `55432` and Redis on host port `56379` by default. Set `POSTGRES_PORT` or `REDIS_PORT` to override the host-side ports for host-run tools and tests. The Compose database and Redis services remain on ports `5432` and `6379` inside the container network.
+
+Compose waits for PostgreSQL and Redis health before starting the backend, and for backend readiness before starting the frontend. `/health` reports liveness; `/health/ready` checks PostgreSQL, Redis, market-data access, the paper broker adapter, and model-service configuration. `/api/deployment/status` reports live availability for the same dependencies and service components, while retaining configured environment, broker, and trading-mode fields.
 
 There is no background worker or task queue in the current deployment. Data ingestion and research evaluation run in API requests. Database schema changes are managed by Alembic migrations.
 

@@ -157,7 +157,7 @@ Market updates match existing orders only; they do not create orders. Bar timest
 | `POST` | `/api/agents/run` | Deterministic research workflow returning supplied data, indicators, observations, risks, uncertainties, sources, and a non-binding analysis. | No route key |
 | `GET` | `/api/audit-logs` | Recent write-request audit metadata. Query: `limit` (1–500, default 100). | Key when enabled |
 | `GET` | `/api/broker/status` | Configured broker mode and live-trading status. | No route key |
-| `GET` | `/api/deployment/status` | Runtime configuration and deployment readiness summary. | No route key |
+| `GET` | `/api/deployment/status` | Runtime configuration and live deployment readiness summary. Returns `ok` or `degraded` and reports PostgreSQL, Redis, market-data, broker, and model-service availability. | No route key |
 
 For `/api/ai/rag`, `documents` remains a list of strings with generated IDs (`document-1`, etc.). Alternatively, provide `sources` as objects containing a stable caller-assigned `source_id` and `text`. Long sources are split into overlapping chunks, ranked using lexical inverse-document-frequency scores, and returned with chunk indexes and cited source IDs. Retrieval is local and lexical; it does not use embeddings or an LLM.
 
