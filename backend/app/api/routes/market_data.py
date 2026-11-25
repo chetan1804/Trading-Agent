@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 import pandas as pd
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from pydantic import BaseModel, Field, model_validator
 from trading.data.synthetic import generate_synthetic_ohlcv
 from trading.data.validation import validate_ohlcv
@@ -58,6 +67,53 @@ def _headline_batch(symbol: str, limit: int) -> list[dict[str, object]]:
 
 
 router = APIRouter(prefix="/api", tags=["market-data"])
+
+
+@router.websocket("/market-data/stream")
+async def market_data_stream(
+    websocket: WebSocket,
+    symbol: str = "RELIANCE.NS",
+    max_updates: int = Query(default=10, ge=1, le=60),
+    interval_ms: int = Query(default=1000, ge=100, le=60000),
+) -> None:
+    """Stream a bounded set of local quote snapshots; it does not place orders."""
+    await websocket.accept()
+    symbol_upper = symbol.upper()
+    store = getattr(websocket.app.state, "market_data_store", {})
+    stored_bars = store.get(symbol_upper, [])
+    if stored_bars:
+        data_source = "ingested"
+        bars = list(stored_bars)[-max_updates:]
+    else:
+        data_source = "synthetic"
+        bars = (
+            generate_synthetic_ohlcv(
+                symbol=symbol_upper,
+                periods=max(max_updates, 1),
+                seed=7,
+            )
+            .tail(max_updates)
+            .to_dict(orient="records")
+        )
+
+    try:
+        for bar in bars:
+            timestamp = pd.to_datetime(bar["timestamp"], utc=True)
+            await websocket.send_json(
+                {
+                    "symbol": symbol_upper,
+                    "data_source": data_source,
+                    "timestamp": timestamp.isoformat(),
+                    "last_price": float(bar["close"]),
+                    "open": float(bar["open"]),
+                    "high": float(bar["high"]),
+                    "low": float(bar["low"]),
+                    "volume": int(bar["volume"]),
+                }
+            )
+            await asyncio.sleep(interval_ms / 1000)
+    except WebSocketDisconnect:
+        return
 
 
 @router.get("/market-data/quote")

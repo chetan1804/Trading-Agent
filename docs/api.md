@@ -22,6 +22,7 @@ Health routes are outside the `/api` rate limiter.
 | `GET` | `/api/market-data/news` | Deterministic sample headlines. Query: `symbol`, `limit` (1–10, default 5). | No route key |
 | `GET` | `/api/market-data/validate` | Validate cached or synthetic bars, with optional cadence and return-outlier checks; response `data_source` identifies the input. Query: `symbol`, `limit` (1–500, default 20), `expected_interval` (Pandas duration such as `1h` or `1D`), `max_abs_close_return` (positive fractional threshold, default 1.0), `check_outliers` (default true). | No route key |
 | `GET` | `/api/market-data/stored` | Cached bars currently available to this API process. Query: `symbol`, `limit` (1–500, default 50). | No route key |
+| `WebSocket` | `/api/market-data/stream` | Read-only bounded stream of local quote snapshots. Query: `symbol`, `max_updates` (1–60, default 10), `interval_ms` (100–60000, default 1000). | No route key |
 | `POST` | `/api/market-data/ingest` | Validate, persist, and cache up to 10,000 supplied OHLCV bars per request. | Key when enabled |
 | `GET` | `/api/features/engineer` | Latest engineered feature rows. Query: `symbol`, `limit` (1–200, default 20). | No route key |
 | `POST` | `/api/news/ingest` | Normalize supplied headlines, deduplicate them, score lexical sentiment, and persist the results. Accepts 1–500 articles. | Key when enabled |
@@ -30,6 +31,8 @@ Health routes are outside the `/api` rate limiter.
 Market-data bars use timestamps and `open`, `high`, `low`, `close`, and `volume`. Ingestion normalizes naive timestamps as UTC, validates OHLC constraints, rejects duplicate normalized timestamps within one batch, and upserts by symbol and timestamp across requests. PostgreSQL writes are split into batches of 1,000 rows and committed together. The `stored` endpoint returns the process cache; PostgreSQL is the durable store.
 
 Quote, history, and validation responses identify whether data came from ingested bars or the deterministic synthetic fallback. Do not treat synthetic fallback values as market observations.
+
+The WebSocket stream at `/api/market-data/stream` replay-sends up to 60 recent local snapshots at a caller-selected interval. It sends ingested bars when available and otherwise sends explicitly labeled synthetic bars. It is bounded, read-only, and cannot submit or fill orders.
 
 The validation endpoint reports structured `quality_issues` with severity and affected row counts. Set `expected_interval` to detect missing bars; `missing_intervals` counts the estimated absent intervals. `max_abs_close_return` flags close-to-close fractional moves above a chosen threshold (1.0 means 100%); set `check_outliers=false` to disable that check. Data-gap and outlier warnings do not make `valid` false, while data-quality errors do. For example, `/api/market-data/validate?symbol=RELIANCE.NS&expected_interval=1h&max_abs_close_return=0.25` checks one-hour gaps and flags moves above 25%.
 

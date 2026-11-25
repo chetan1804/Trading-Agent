@@ -38,6 +38,21 @@ def test_market_data_api_endpoints_work() -> None:
         assert payload["data"][0]["close"] > 0
 
 
+def test_market_data_websocket_stream_labels_synthetic_data() -> None:
+    app = create_app(Settings(app_env="test", enable_trading=False))
+    with TestClient(app) as client:
+        with client.websocket_connect(
+            "/api/market-data/stream?symbol=DEMO&max_updates=2&interval_ms=100"
+        ) as websocket:
+            first = websocket.receive_json()
+            second = websocket.receive_json()
+
+    assert first["symbol"] == "DEMO"
+    assert first["data_source"] == "synthetic"
+    assert first["last_price"] > 0
+    assert second["timestamp"] != first["timestamp"]
+
+
 def test_feature_engineering_api_endpoints_work() -> None:
     app = create_app(Settings(app_env="test", enable_trading=False))
     with TestClient(app) as client:
