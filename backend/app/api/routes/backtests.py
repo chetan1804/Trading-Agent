@@ -21,6 +21,8 @@ from trading.strategies.buy_hold import BuyAndHoldStrategy
 from trading.strategies.ml_strategy import MLProbabilityStrategy
 from trading.strategies.moving_average import MovingAverageCrossoverStrategy
 
+from app.repositories.models import ModelRegistryRepository
+
 router = APIRouter(prefix="/api", tags=["backtests"])
 
 
@@ -35,7 +37,10 @@ def _finite_metrics(metrics: dict[str, float | int]) -> dict[str, float | int | 
 async def run_backtest(
     request: Request,
     symbol: str = "RELIANCE.NS",
-    strategy_id: Literal["moving_average", "buy_and_hold"] = "moving_average",
+    strategy_id: Literal["moving_average", "buy_and_hold", "registered_model"] = "moving_average",
+    model_version: str | None = None,
+    buy_threshold: float = Query(default=0.65, gt=0, le=1),
+    sell_threshold: float = Query(default=0.35, ge=0, lt=1),
     limit: int = Query(default=60, ge=20, le=300),
     initial_cash: float = Query(default=100000.0, gt=0),
     commission_rate: float = Query(default=0.001, ge=0, lt=1),
@@ -90,12 +95,51 @@ async def run_backtest(
             take_profit_fraction=take_profit_fraction,
         )
     )
+    if strategy_id == "registered_model":
+        if sell_threshold >= buy_threshold:
+            raise HTTPException(
+                status_code=422,
+                detail="sell_threshold must be less than buy_threshold",
+            )
+        async with request.app.state.database_session_factory() as session:
+            repository = ModelRegistryRepository(session)
+            if model_version:
+                model = await repository.get(model_version)
+            else:
+                active = await repository.get_active()
+                model = active[0] if active else None
+        if model is None:
+            detail = (
+                f"registered model {model_version} not found"
+                if model_version
+                else "no active registered model"
+            )
+            raise HTTPException(status_code=404, detail=detail)
+
+        missing_features = sorted(set(model.feature_names).difference(run_data.columns))
+        if missing_features:
+            raise HTTPException(
+                status_code=422,
+                detail=f"backtest data is missing model features: {', '.join(missing_features)}",
+            )
+        selected_strategy = MLProbabilityStrategy(
+            artifact=model.artifact,
+            feature_names=tuple(model.feature_names),
+            buy_threshold=buy_threshold,
+            sell_threshold=sell_threshold,
+            model_version=model.model_version,
+        )
+    elif strategy_id == "moving_average":
+        selected_strategy = MovingAverageCrossoverStrategy(fast_window=20, slow_window=50)
+    else:
+        selected_strategy = BuyAndHoldStrategy()
+
     moving_average_result = engine.run(
         run_data,
         MovingAverageCrossoverStrategy(fast_window=20, slow_window=50),
     )
     buy_and_hold_result = engine.run(run_data, BuyAndHoldStrategy())
-    result = moving_average_result if strategy_id == "moving_average" else buy_and_hold_result
+    result = engine.run(run_data, selected_strategy)
     metrics = calculate_performance_metrics(
         result.equity_curve, result.trades, turnover_value=result.turnover
     )
@@ -113,7 +157,11 @@ async def run_backtest(
     normalized_metrics = _finite_metrics(metrics)
     return {
         "symbol": symbol_upper,
-        "strategy_id": strategy_id,
+        "strategy_id": (
+            f"registered_model:{model.model_version}"
+            if strategy_id == "registered_model"
+            else strategy_id
+        ),
         "data_source": data_source,
         "initial_cash": float(result.initial_cash),
         "ending_cash": float(result.ending_cash),

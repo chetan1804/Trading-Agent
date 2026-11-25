@@ -175,6 +175,7 @@ function App() {
   const [backtestStopLoss, setBacktestStopLoss] = useState("");
   const [backtestTakeProfit, setBacktestTakeProfit] = useState("");
   const [backtestModelType, setBacktestModelType] = useState("logistic_regression");
+  const [backtestModelVersion, setBacktestModelVersion] = useState("");
   const [backtestBuyThreshold, setBacktestBuyThreshold] = useState("0.65");
   const [backtestSellThreshold, setBacktestSellThreshold] = useState("0.35");
   const [backtestTrainingWindow, setBacktestTrainingWindow] = useState("60");
@@ -215,6 +216,11 @@ function App() {
       params.set("commission_rate", backtestCommission);
       params.set("slippage_bps", backtestSlippage);
       params.set("spread_bps", backtestSpread);
+      if (backtestStrategy === "registered_model") {
+        if (backtestModelVersion.trim()) params.set("model_version", backtestModelVersion.trim());
+        params.set("buy_threshold", backtestBuyThreshold);
+        params.set("sell_threshold", backtestSellThreshold);
+      }
       if (backtestStart) params.set("start_date", backtestStart);
       if (backtestEnd) params.set("end_date", backtestEnd);
     }
@@ -453,8 +459,12 @@ function App() {
           <div className="backtest-layout">
             <form className="panel backtest-form" onSubmit={runBacktest}>
               <label>Symbol<input required value={backtestSymbol} onChange={(event) => setBacktestSymbol(event.target.value)} /></label>
-              <label>Evaluation<select value={backtestMode} onChange={(event) => { const mode = event.target.value; setBacktestMode(mode); if (mode === "walk_forward" && backtestStrategy === "buy_and_hold") setBacktestStrategy("moving_average"); }}><option value="single">Single historical window</option><option value="walk_forward">Chronological walk-forward</option></select></label>
-              <label>Strategy<select value={backtestStrategy} onChange={(event) => setBacktestStrategy(event.target.value)}><option value="moving_average">Moving average crossover</option>{backtestMode === "single" ? <option value="buy_and_hold">Buy and hold</option> : <option value="ml_probability">ML probability</option>}</select></label>
+              <label>Evaluation<select value={backtestMode} onChange={(event) => { const mode = event.target.value; setBacktestMode(mode); if (mode === "walk_forward" && backtestStrategy !== "moving_average" && backtestStrategy !== "ml_probability") setBacktestStrategy("moving_average"); }}><option value="single">Single historical window</option><option value="walk_forward">Chronological walk-forward</option></select></label>
+              <label>Strategy<select value={backtestStrategy} onChange={(event) => setBacktestStrategy(event.target.value)}><option value="moving_average">Moving average crossover</option>{backtestMode === "single" ? <><option value="buy_and_hold">Buy and hold</option><option value="registered_model">Registered ML model</option></> : <option value="ml_probability">ML probability</option>}</select></label>
+              {backtestMode === "single" && backtestStrategy === "registered_model" && <>
+                <label>Model version (optional)<input value={backtestModelVersion} onChange={(event) => setBacktestModelVersion(event.target.value)} placeholder="Leave blank for active model" /></label>
+                <div className="backtest-dates"><label>Buy probability<input type="number" min="0.01" max="1" step="0.01" required value={backtestBuyThreshold} onChange={(event) => setBacktestBuyThreshold(event.target.value)} /></label><label>Sell probability<input type="number" min="0" max="0.99" step="0.01" required value={backtestSellThreshold} onChange={(event) => setBacktestSellThreshold(event.target.value)} /></label></div>
+              </>}
               {backtestMode === "single" ? <div className="backtest-dates"><label>Start date<input type="date" value={backtestStart} onChange={(event) => setBacktestStart(event.target.value)} /></label><label>End date<input type="date" value={backtestEnd} onChange={(event) => setBacktestEnd(event.target.value)} /></label></div> : <div className="walk-forward-windows"><label>Training bars<input type="number" min="2" required value={backtestTrainingWindow} onChange={(event) => setBacktestTrainingWindow(event.target.value)} /></label><label>Validation bars<input type="number" min="1" required value={backtestValidationWindow} onChange={(event) => setBacktestValidationWindow(event.target.value)} /></label><label>Test bars<input type="number" min="1" required value={backtestTestWindow} onChange={(event) => setBacktestTestWindow(event.target.value)} /></label><label>Step bars<input type="number" min="1" required value={backtestStepSize} onChange={(event) => setBacktestStepSize(event.target.value)} /></label></div>}
               <label>Bars to include<input type="number" min={backtestMode === "single" ? 20 : 3} max={backtestMode === "single" ? 300 : 10000} required value={backtestBars} onChange={(event) => setBacktestBars(event.target.value)} /></label>
               {backtestMode === "walk_forward" && backtestStrategy === "ml_probability" && <>

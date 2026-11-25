@@ -69,7 +69,7 @@ Omit `X-API-Key` only when API authentication is disabled. Synthetic fallback da
 
 Backtest parameters:
 
-- `/api/backtests/run`: `symbol`, `strategy_id`, `limit`, `initial_cash`, `commission_rate`, `slippage_bps`, `spread_bps`, optional `start_date`, `end_date`, `stop_loss_fraction`, and `take_profit_fraction`.
+- `/api/backtests/run`: `symbol`, `strategy_id` (`moving_average`, `buy_and_hold`, or `registered_model`), optional `model_version`, `buy_threshold`, `sell_threshold`, `limit`, `initial_cash`, `commission_rate`, `slippage_bps`, `spread_bps`, optional `start_date`, `end_date`, `stop_loss_fraction`, and `take_profit_fraction`.
 - `/api/backtests/walk-forward`: `symbol`, `limit`, `training_window`, `validation_window`, `test_window`, `step_size`, `initial_cash`, `strategy_id`, `model_type`, `buy_threshold`, `sell_threshold`, and optional stop/take-profit fractions.
 
 The detailed output includes metrics, trades, equity points, and benchmark comparisons. Historical results do not predict future returns. For example:
@@ -87,6 +87,8 @@ curl -G 'http://localhost:8001/api/backtests/walk-forward' \
 ```
 
 `POST /api/strategies/run` requires ingested bars. A typical body is `{"symbol":"RELIANCE.NS","stop_loss_fraction":0.02}`. An approved BUY still requires `ENABLE_TRADING=true`; this endpoint stages an unfilled paper order and does not fill it.
+
+For a single-window registered-model backtest, set `strategy_id=registered_model`. If `model_version` is omitted, the currently promoted active model is used. Otherwise the exact registered version is loaded. The requested bar frame must contain every registered feature name. This path never promotes a model or enables trading.
 
 ## Models and monitoring
 

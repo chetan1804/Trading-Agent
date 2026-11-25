@@ -184,6 +184,57 @@ def test_backtesting_api_endpoints_work() -> None:
         assert "total_return" in payload["metrics"]
 
 
+def test_registered_model_backtest_rejects_missing_active_model() -> None:
+    app = create_app(Settings(app_env="test", enable_trading=False))
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/backtests/run",
+            params={"symbol": "DEMO", "limit": 30, "strategy_id": "registered_model"},
+        )
+
+        assert response.status_code == 404
+        assert response.json()["detail"] == "no active registered model"
+
+
+def test_registered_model_backtest_runs_with_active_artifact(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from app.repositories.models import ModelRegistryRepository
+    from trading.ml.trainer import SignalModelTrainer
+
+    _, artifact = SignalModelTrainer().train_with_artifact(
+        features={"sma_20": [0.0, 1.0, 0.0, 1.0, 0.0, 1.0]},
+        labels=[0, 1, 0, 1, 0, 1],
+    )
+
+    async def get_active(self):
+        return (
+            SimpleNamespace(
+                artifact=artifact,
+                feature_names=["sma_20"],
+                model_version="logistic-test",
+            ),
+            UTC,
+        )
+
+    monkeypatch.setattr(ModelRegistryRepository, "get_active", get_active)
+    app = create_app(Settings(app_env="test", enable_trading=False))
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/backtests/run",
+            params={
+                "symbol": "DEMO",
+                "limit": 30,
+                "strategy_id": "registered_model",
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["strategy_id"] == "registered_model:logistic-test"
+    assert "metrics" in payload
+
+
 def test_ml_walk_forward_backtest_fits_only_before_test_windows() -> None:
     app = create_app(Settings(app_env="test", enable_trading=False))
     with TestClient(app) as client:
