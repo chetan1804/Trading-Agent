@@ -132,6 +132,14 @@ type WalkForwardBacktestPayload = {
 
 type BacktestPayload = SingleBacktestPayload | WalkForwardBacktestPayload;
 
+type BackgroundJob = {
+  id: string;
+  status: "queued" | "running" | "succeeded" | "failed";
+  payload: Record<string, unknown>;
+  result?: Record<string, unknown>;
+  error?: string;
+};
+
 const API_ORIGIN = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
 const API_URL = `${API_ORIGIN}/api/dashboard/overview`;
 const money = new Intl.NumberFormat("en-IN", {
@@ -162,6 +170,11 @@ function App() {
   const [agentReport, setAgentReport] = useState<AgentReport | null>(null);
   const [agentError, setAgentError] = useState<string | null>(null);
   const [agentLoading, setAgentLoading] = useState(false);
+  const [jobType, setJobType] = useState("ai_research");
+  const [jobId, setJobId] = useState("");
+  const [job, setJob] = useState<BackgroundJob | null>(null);
+  const [jobError, setJobError] = useState<string | null>(null);
+  const [jobLoading, setJobLoading] = useState(false);
   const [monitoring, setMonitoring] = useState<MonitoringPayload | null>(null);
   const [monitoringError, setMonitoringError] = useState<string | null>(null);
   const [backtestMode, setBacktestMode] = useState("single");
@@ -298,6 +311,79 @@ function App() {
       setResearchLoading(false);
     }
   };
+
+  const submitJob = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setJobLoading(true);
+    setJobError(null);
+    try {
+      const body =
+        jobType === "ai_research"
+          ? {
+              type: jobType,
+              symbol: researchSymbol.trim(),
+              market_snapshot: {
+                ...(researchPrice ? { price: Number(researchPrice) } : {}),
+                ...(researchChange ? { change_pct: Number(researchChange) } : {}),
+                ...(researchVolume ? { volume: Number(researchVolume) } : {}),
+              },
+              news: researchNews.split("\n").map((item) => item.trim()).filter(Boolean),
+              documents: researchDocuments.split("\n").map((item) => item.trim()).filter(Boolean),
+            }
+          : {
+              type: jobType,
+              symbol: backtestSymbol.trim(),
+              limit: Number(backtestBars),
+              initial_cash: Number(backtestCapital),
+            };
+      const response = await fetch(`${API_ORIGIN}/api/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!response.ok) {
+        const detail = (await response.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(detail.detail ?? `API returned ${response.status}`);
+      }
+      const created = (await response.json()) as { job_id: string };
+      setJobId(created.job_id);
+      setJob({
+        id: created.job_id,
+        status: "queued",
+        payload: body,
+      });
+    } catch (fetchError) {
+      setJobError(fetchError instanceof Error ? fetchError.message : "Job submission failed");
+      setJob(null);
+    } finally {
+      setJobLoading(false);
+    }
+  };
+
+  const refreshJob = async () => {
+    if (!jobId.trim()) return;
+    setJobLoading(true);
+    setJobError(null);
+    try {
+      const response = await fetch(`${API_ORIGIN}/api/jobs/${encodeURIComponent(jobId.trim())}`);
+      if (!response.ok) {
+        const detail = (await response.json().catch(() => ({}))) as { detail?: string };
+        throw new Error(detail.detail ?? `API returned ${response.status}`);
+      }
+      setJob((await response.json()) as BackgroundJob);
+    } catch (fetchError) {
+      setJobError(fetchError instanceof Error ? fetchError.message : "Job status request failed");
+    } finally {
+      setJobLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!jobId || job?.status === "succeeded" || job?.status === "failed") return;
+    const timer = window.setInterval(() => void refreshJob(), 2000);
+    void refreshJob();
+    return () => window.clearInterval(timer);
+  }, [jobId, job?.status]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -553,6 +639,20 @@ function App() {
               <section><h4>Retrieved research</h4>{agentReport.research_context.sources.length ? <ul>{agentReport.research_context.sources.map((source) => <li key={source.source_id}><strong>[{source.source_id}]</strong> {source.excerpt}</li>)}</ul> : <p className="research-muted">{agentReport.research_context.answer}</p>}<h4>Risks and data gaps</h4><ul>{agentReport.risks_and_uncertainties.map((item) => <li key={item}>{item}</li>)}</ul></section>
             </div> : <EmptyState>Ask a question above to run the research workflow.</EmptyState>}
             <p className="research-footnote">This workflow does not fetch or verify data, call an LLM, or approve or submit an order.</p>
+          </article>
+          <article className="panel job-panel" aria-live="polite">
+            <div className="panel-heading"><div><p className="eyebrow">Redis worker</p><h3>Background research job</h3></div><span className={`monitoring-status ${job?.status ?? "unavailable"}`}>{job?.status ?? "idle"}</span></div>
+            <form className="job-form" onSubmit={submitJob}>
+              <label>Job type<select value={jobType} onChange={(event) => setJobType(event.target.value)}><option value="ai_research">AI research summary</option><option value="backtest">Synthetic moving-average backtest</option></select></label>
+              <button className="refresh-button" type="submit" disabled={jobLoading}>Queue job</button>
+            </form>
+            {jobError && <p className="research-error" role="alert">{jobError}</p>}
+            {job ? <>
+              <div className="job-status"><span>Job ID</span><strong>{job.id}</strong></div>
+              {job.error && <p className="research-error">{job.error}</p>}
+              {job.result && <pre className="job-result">{JSON.stringify(job.result, null, 2)}</pre>}
+            </> : <p className="research-muted">Queue a bounded research or historical simulation job.</p>}
+            <p className="research-footnote">Jobs use the Redis worker in Compose and remain informational. They cannot place or approve paper/live orders.</p>
           </article>
         </section>
         <footer>Research and paper-trading workspace <span>•</span> No live orders are enabled</footer>
