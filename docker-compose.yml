@@ -57,6 +57,17 @@ services:
       timeout: 5s
       retries: 5
 
+  worker:
+    build: .
+    command: ["python", "scripts/run_job_worker.py"]
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-trading}:${POSTGRES_PASSWORD:-trading}@postgres:5432/${POSTGRES_DB:-trading}
+    depends_on:
+      redis:
+        condition: service_healthy
+
   postgres:
     image: postgres:17-alpine
     ports:

@@ -14,6 +14,7 @@ from redis.exceptions import RedisError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from trading.broker.paper_broker import PaperBroker
+from trading.jobs.store import InMemoryJobStore, RedisJobStore
 from trading.risk.limits import RiskLimits
 from trading.risk.manager import RiskManager
 
@@ -26,6 +27,7 @@ from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.deployment import router as deployment_router
 from app.api.routes.features import router as features_router
 from app.api.routes.health import router as health_router
+from app.api.routes.jobs import router as jobs_router
 from app.api.routes.market_data import router as market_data_router
 from app.api.routes.ml import router as ml_router
 from app.api.routes.monitoring import router as monitoring_router
@@ -96,6 +98,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         application.state.redis_client = Redis.from_url(
             app_settings.redis_url, decode_responses=True
         )
+        application.state.job_store = (
+            InMemoryJobStore()
+            if app_settings.app_env == "test"
+            else RedisJobStore(application.state.redis_client)
+        )
         application.state.risk_manager = _build_risk_manager(app_settings)
         application.state.paper_broker = PaperBroker(
             initial_cash=100_000.0,
@@ -162,6 +169,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         risk_manager=application.state.risk_manager,
     )
     application.state.market_data_store: dict[str, list[dict[str, object]]] = {}
+    application.state.job_store = InMemoryJobStore()
     application.state.strategy_decisions: dict[str, dict[str, object]] = {}
     application.state.paper_order_lock = asyncio.Lock()
     application.state.audit_events = []
@@ -256,6 +264,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     application.include_router(health_router)
     application.include_router(audit_router)
+    application.include_router(jobs_router)
     application.include_router(market_data_router)
     application.include_router(features_router)
     application.include_router(strategies_router)

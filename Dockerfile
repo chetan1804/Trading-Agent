@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY backend ./backend
+COPY scripts ./scripts
 COPY alembic.ini ./
 COPY migrations ./migrations
 ENV PIP_DEFAULT_TIMEOUT=300

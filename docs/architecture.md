@@ -101,7 +101,7 @@ Compose publishes PostgreSQL on host port `55432` and Redis on host port `56379`
 
 Compose waits for PostgreSQL and Redis health before starting the backend, and for backend readiness before starting the frontend. `/health` reports liveness; `/health/ready` checks PostgreSQL, Redis, market-data access, the paper broker adapter, and model-service configuration. `/api/deployment/status` reports live availability for the same dependencies and service components, while retaining configured environment, broker, and trading-mode fields.
 
-There is no background worker or task queue in the current deployment. Data ingestion and research evaluation run in API requests. Database schema changes are managed by Alembic migrations.
+Redis-backed background jobs support bounded AI research and synthetic backtests. The API queues JSON work and exposes status/results; Compose runs a separate worker consumer. Development/test mode may use an in-process store. Jobs remain read/research operations and cannot place or approve orders. Database schema changes are managed by Alembic migrations.
 
 ## Security and operational boundaries
 

@@ -58,6 +58,8 @@ make lint
 
 The backend and dashboard use separate containers. The backend image is built from the repository root, runs as the configured Uvicorn service, and has no live broker adapter. The dashboard is built as static assets and served by Nginx with SPA fallback and a container health endpoint. Compose waits for PostgreSQL/Redis and backend readiness before starting dependent services. CI runs tests and lint/format checks, then builds both container images; tagged releases publish the backend image to GitHub Container Registry.
 
+`POST /api/jobs` queues bounded AI research or synthetic backtest work for a Redis-backed worker; `GET /api/jobs/{job_id}` returns status and the result or error. Development/test mode uses an in-process in-memory job store, while Compose runs a separate `worker` service. Jobs remain informational and cannot place or approve orders.
+
 For a hosted deployment, provide a managed PostgreSQL database and Redis service, set `APP_ENV=production`, enable API authentication with a unique `API_KEY` of at least 32 characters, and configure `CORS_ALLOWED_ORIGINS` for the dashboard origin. Set `VITE_API_URL` to the public HTTPS API origin before building the frontend image. Keep `ENABLE_TRADING=false`; the application has no live broker integration. Never use Compose's local fallback database credentials on a public host.
 
 ## Market data

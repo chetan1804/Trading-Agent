@@ -160,6 +160,8 @@ Market updates match existing orders only; they do not create orders. Bar timest
 | `POST` | `/api/ai/sentiment` | Rule-based sentiment summary of supplied headlines. | No route key |
 | `POST` | `/api/ai/rag` | Chunked lexical retrieval with citations for supplied document excerpts or source objects. | No route key |
 | `POST` | `/api/agents/run` | Deterministic research workflow returning supplied data, indicators, observations, risks, uncertainties, sources, and a non-binding analysis. | No route key |
+| `POST` | `/api/jobs` | Queue a bounded `ai_research` or synthetic-data `backtest` background job. | No route key |
+| `GET` | `/api/jobs/{job_id}` | Read queued, running, succeeded, or failed job status and result. | No route key |
 | `GET` | `/api/audit-logs` | Recent write-request audit metadata. Query: `limit` (1–500, default 100). | Key when enabled |
 | `GET` | `/api/broker/status` | Configured broker mode and live-trading status. | No route key |
 | `GET` | `/api/deployment/status` | Runtime configuration and live deployment readiness summary. Returns `ok` or `degraded` and reports PostgreSQL, Redis, market-data, broker, and model-service availability. | No route key |
