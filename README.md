@@ -56,7 +56,7 @@ make lint
 
 ## Deployment
 
-The backend and dashboard use separate containers. The backend image is built from the repository root, runs as the configured Uvicorn service, and has no live broker adapter. The dashboard is built as static assets and served by Nginx with SPA fallback and a container health endpoint. Compose waits for PostgreSQL/Redis and backend readiness before starting dependent services. CI runs tests and lint/format checks, validates Compose configuration, and builds both container images; tagged releases publish separate backend and frontend images to GitHub Container Registry.
+The backend and dashboard use separate containers. The backend image is built from the repository root, runs as the configured Uvicorn service, and has no live broker adapter. The dashboard is built as static assets and served by Nginx with SPA fallback, same-origin `/api` proxying, WebSocket upgrades, and a container health endpoint. `BACKEND_URL` configures the Nginx upstream (Compose uses `http://backend:8000`). Compose waits for PostgreSQL/Redis and backend readiness before starting dependent services. CI runs tests and lint/format checks, validates Compose configuration, and builds both container images; tagged releases publish separate backend and frontend images to GitHub Container Registry.
 
 `POST /api/jobs` queues bounded AI research or synthetic backtest work for a Redis-backed worker; `GET /api/jobs/{job_id}` returns status and the result or error. Development/test mode uses an in-process in-memory job store, while Compose runs a separate `worker` service. Jobs remain informational and cannot place or approve orders.
 

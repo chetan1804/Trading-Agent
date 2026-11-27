@@ -140,7 +140,7 @@ type BackgroundJob = {
   error?: string;
 };
 
-const API_ORIGIN = import.meta.env.VITE_API_URL ?? "http://localhost:8001";
+const API_ORIGIN = (import.meta.env.VITE_API_URL as string | undefined)?.trim() || "";
 const API_URL = `${API_ORIGIN}/api/dashboard/overview`;
 const money = new Intl.NumberFormat("en-IN", {
   style: "currency",
