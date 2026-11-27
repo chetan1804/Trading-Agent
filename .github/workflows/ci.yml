@@ -57,6 +57,9 @@ jobs:
       - name: Build backend container
         run: docker build --tag trading-agent-backend:ci .
 
+      - name: Validate Compose configuration
+        run: docker compose config --quiet
+
   frontend:
     runs-on: ubuntu-latest
     steps:
