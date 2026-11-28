@@ -1,4 +1,4 @@
-.PHONY: install test lint format run migrate docker-up docker-down
+.PHONY: install test lint format run migrate docker-up docker-down docker-smoke
 
 install:
 	uv sync --extra dev
@@ -23,3 +23,6 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+docker-smoke:
+	python3 scripts/smoke_check.py

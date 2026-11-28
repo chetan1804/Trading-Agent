@@ -62,6 +62,8 @@ The backend and dashboard use separate containers. The backend image is built fr
 
 The dashboard **Market research** section includes a background-job panel for queuing AI research or synthetic moving-average backtests and polling their status. It displays status and JSON results only; it does not expose order actions.
 
+After starting the complete stack, run `make docker-smoke` to check backend liveness/readiness, deployment status, and frontend health. Override endpoints with `SMOKE_API_URL` and `SMOKE_FRONTEND_URL` when the published ports differ. The check is read-only and does not create paper orders or mutate account state.
+
 For a hosted deployment, provide a managed PostgreSQL database and Redis service, set `APP_ENV=production`, enable API authentication with a unique `API_KEY` of at least 32 characters, and configure `CORS_ALLOWED_ORIGINS` for the dashboard origin. Set `VITE_API_URL` to the public HTTPS API origin before building the frontend image. Keep `ENABLE_TRADING=false`; the application has no live broker integration. Never use Compose's local fallback database credentials on a public host.
 
 ## Market data
