@@ -88,18 +88,21 @@ Equity observations are captured at application startup, paper fills, and paper 
 
 ## Services and deployment
 
-`docker compose up --build` starts four services:
+`docker compose up --build` starts five services:
 
 | Service | Responsibility |
 | --- | --- |
-| `frontend` | Builds the React application and serves static assets through Nginx. |
+| `frontend` | Builds the React application and serves static assets through Nginx with same-origin API/WebSocket proxying. |
 | `backend` | Runs Alembic migrations, then starts FastAPI/Uvicorn. |
+| `worker` | Consumes Redis-backed AI research and synthetic backtest jobs. |
 | `postgres` | Stores market data, paper-account records, model registry and observations, equity history, strategy decisions, and audit logs. |
-| `redis` | Provides fixed-window rate-limit counters for API requests. |
+| `redis` | Provides fixed-window rate-limit counters and the background-job queue. |
 
 Compose publishes PostgreSQL on host port `55432` and Redis on host port `56379` by default. Set `POSTGRES_PORT` or `REDIS_PORT` to override the host-side ports for host-run tools and tests. The Compose database and Redis services remain on ports `5432` and `6379` inside the container network.
 
 Compose waits for PostgreSQL and Redis health before starting the backend, and for backend readiness before starting the frontend. `/health` reports liveness; `/health/ready` checks PostgreSQL, Redis, market-data access, the paper broker adapter, and model-service configuration. `/api/deployment/status` reports live availability for the same dependencies and service components, while retaining configured environment, broker, and trading-mode fields.
+
+Run `make docker-smoke` after startup to verify backend liveness/readiness, deployment status, and frontend health with read-only HTTP requests.
 
 Redis-backed background jobs support bounded AI research and synthetic backtests. The API queues JSON work and exposes status/results; Compose runs a separate worker consumer. Development/test mode may use an in-process store. Jobs remain read/research operations and cannot place or approve orders. Database schema changes are managed by Alembic migrations.
 
